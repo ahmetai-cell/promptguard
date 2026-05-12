@@ -9,7 +9,11 @@ const PROXY_ENDPOINT = "https://promptguard-proxy.example.com/events"; // swap w
 export function logEvent(event) {
   const payload = {
     ts: Date.now(),
-    ...event,
+    verdict: event.verdict,
+    score: event.score,
+    matches: event.matches,
+    url: event.url,
+    prompt: event.prompt ?? null,
     ua: navigator.userAgent.slice(0, 120),
   };
 

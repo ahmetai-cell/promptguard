@@ -6,14 +6,14 @@ let sessionStats = { blocked: 0, warned: 0, allowed: 0 };
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== "VERDICT") return;
 
-  const { verdict, score, matches, url } = msg;
+  const { verdict, score, matches, url, prompt } = msg;
 
   sessionStats[verdict.toLowerCase()] =
     (sessionStats[verdict.toLowerCase()] ?? 0) + 1;
 
   updateBadge(verdict);
 
-  const event = { verdict, score, matches, url, tabId: sender.tab?.id };
+  const event = { verdict, score, matches, url, prompt, tabId: sender.tab?.id };
   storeEvent(event);
   if (verdict === "WARN") logEvent(event);
 

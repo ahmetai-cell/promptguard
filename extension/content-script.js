@@ -22,11 +22,19 @@ function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
 }
 
-function postVerdict(verdict, score, matches, url) {
+function postVerdict(verdict, score, matches, url, prompt = null) {
   window.postMessage(
-    { source: "promptguard", type: "VERDICT", verdict, score, matches, url },
+    { source: "promptguard", type: "VERDICT", verdict, score, matches, url, prompt },
     "*"
   );
+}
+
+function extractPromptText(messages) {
+  return messages
+    .filter((m) => m.role === "user")
+    .map((m) => (typeof m.content === "string" ? m.content : ""))
+    .join("\n")
+    .slice(0, 2000); // cap at 2000 chars — enough for classifier, avoids large payloads
 }
 
 // ─── Fetch intercept ───────────────────────────────────────────────────────────
@@ -53,7 +61,6 @@ window.fetch = async function (input, init = {}) {
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, url);
-        // Return a fake AbortError so calling code sees a network-style failure
         return Promise.reject(
           Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
             promptguard: true,
@@ -62,8 +69,8 @@ window.fetch = async function (input, init = {}) {
       }
 
       if (result.verdict === "WARN") {
-        postVerdict("WARN", result.score, result.matches, url);
-        // Attach flag header so proxy can deep-analyse
+        const prompt = extractPromptText(extracted.messages);
+        postVerdict("WARN", result.score, result.matches, url, prompt);
         init.headers = {
           ...(init.headers || {}),
           "X-PromptGuard-Flag": "warn",
@@ -102,7 +109,8 @@ XMLHttpRequest.prototype.send = function (body) {
         }
 
         if (result.verdict === "WARN") {
-          postVerdict("WARN", result.score, result.matches, url);
+          const prompt = extractPromptText(extracted.messages);
+          postVerdict("WARN", result.score, result.matches, url, prompt);
           this.setRequestHeader("X-PromptGuard-Flag", "warn");
           this.setRequestHeader("X-PromptGuard-Score", String(result.score));
         }
@@ -116,9 +124,9 @@ XMLHttpRequest.prototype.send = function (body) {
 
 window.addEventListener("message", (e) => {
   if (e.source !== window || e.data?.source !== "promptguard") return;
-  const { type, verdict, score, matches, url } = e.data;
+  const { type, verdict, score, matches, url, prompt } = e.data;
   if (type === "VERDICT") {
-    chrome.runtime.sendMessage({ type: "VERDICT", verdict, score, matches, url });
+    chrome.runtime.sendMessage({ type: "VERDICT", verdict, score, matches, url, prompt });
   }
 });
 
