@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PromptGuard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: #0f1117;
+      color: #e2e8f0;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #1e2530;
+    }
+
+    header .logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    header h1 { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+    header span { font-size: 11px; color: #64748b; margin-left: auto; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+      background: #1e2530;
+      border-bottom: 1px solid #1e2530;
+    }
+
+    .stat {
+      background: #0f1117;
+      padding: 14px 0;
+      text-align: center;
+    }
+
+    .stat .value {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat .label {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+    }
+
+    .stat.blocked .value { color: #fc8181; }
+    .stat.warned  .value { color: #f6ad55; }
+    .stat.allowed .value { color: #68d391; }
+
+    .section-title {
+      padding: 10px 16px 6px;
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #event-list {
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .event-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 16px;
+      border-bottom: 1px solid #1a1f2a;
+    }
+
+    .event-item:last-child { border-bottom: none; }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .badge.BLOCK { background: #742a2a; color: #fc8181; }
+    .badge.WARN  { background: #7b341e; color: #f6ad55; }
+    .badge.ALLOW { background: #1c4532; color: #68d391; }
+
+    .event-detail { flex: 1; min-width: 0; }
+    .event-url {
+      font-size: 11px;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .event-matches { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+    .empty {
+      padding: 24px 16px;
+      text-align: center;
+      color: #4a5568;
+      font-size: 12px;
+    }
+
+    footer {
+      padding: 10px 16px;
+      border-top: 1px solid #1e2530;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #48bb78;
+      display: inline-block;
+      margin-right: 5px;
+    }
+
+    .status-text { font-size: 11px; color: #68d391; }
+    .clear-btn {
+      font-size: 11px;
+      color: #64748b;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .clear-btn:hover { background: #1e2530; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">🛡</div>
+    <h1>PromptGuard</h1>
+    <span>L1 Active</span>
+  </header>
+
+  <div class="stats">
+    <div class="stat blocked">
+      <div class="value" id="stat-blocked">0</div>
+      <div class="label">Blocked</div>
+    </div>
+    <div class="stat warned">
+      <div class="value" id="stat-warned">0</div>
+      <div class="label">Warned</div>
+    </div>
+    <div class="stat allowed">
+      <div class="value" id="stat-allowed">0</div>
+      <div class="label">Allowed</div>
+    </div>
+  </div>
+
+  <div class="section-title">Recent Events</div>
+  <div id="event-list">
+    <div class="empty" id="empty-msg">No events yet this session.</div>
+  </div>
+
+  <footer>
+    <span><span class="status-dot"></span><span class="status-text">Monitoring active</span></span>
+    <button class="clear-btn" id="clear-btn">Clear</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
