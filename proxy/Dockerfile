@@ -14,6 +14,8 @@ RUN python -c "from transformers import pipeline; pipeline('text-classification'
 
 COPY . .
 
+RUN mkdir -p /data
+
 ENV AUDIT_LOG=/data/audit.jsonl
 ENV L2_BLOCK_THRESHOLD=0.80
 
