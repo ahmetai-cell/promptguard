@@ -1,4 +1,4 @@
-const PROXY_ENDPOINT = "https://promptguard-proxy.example.com/events"; // swap with real endpoint
+const PROXY_ENDPOINT = "https://promptguard-l2-production.up.railway.app/events";
 
 /**
  * Send a detection event to the proxy (ELK forwarding happens server-side).
