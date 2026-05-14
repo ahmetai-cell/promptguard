@@ -165,6 +165,60 @@ def test_audit_log_written(tmp_path, monkeypatch):
     assert "final_verdict" in record
 
 
+# ─── Auth token (X-PG-Token) ─────────────────────────────────────────────────
+
+def test_missing_token_returns_401(tmp_path, monkeypatch):
+    monkeypatch.setenv("PG_TOKEN", "supersecret")
+    monkeypatch.setenv("AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    from server import app as srv_app
+    c = TestClient(srv_app)
+    r = c.post("/events", json={
+        "ts": 2000, "verdict": "WARN", "score": 0.55,
+        "matches": [], "url": "https://api.openai.com", "prompt": "test",
+    })
+    assert r.status_code == 401
+
+
+def test_wrong_token_returns_401(tmp_path, monkeypatch):
+    monkeypatch.setenv("PG_TOKEN", "supersecret")
+    monkeypatch.setenv("AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    from server import app as srv_app
+    c = TestClient(srv_app)
+    r = c.post("/events",
+        json={"ts": 2001, "verdict": "WARN", "score": 0.55,
+              "matches": [], "url": "https://api.openai.com", "prompt": "test"},
+        headers={"X-PG-Token": "wrongtoken"},
+    )
+    assert r.status_code == 401
+
+
+def test_correct_token_passes(tmp_path, monkeypatch):
+    monkeypatch.setenv("PG_TOKEN", "supersecret")
+    monkeypatch.setenv("AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    from server import app as srv_app
+    with patch("server.get_classifier", return_value=_make_stub()):
+        c = TestClient(srv_app)
+        r = c.post("/events",
+            json={"ts": 2002, "verdict": "WARN", "score": 0.55,
+                  "matches": [], "url": "https://api.openai.com", "prompt": "test"},
+            headers={"X-PG-Token": "supersecret"},
+        )
+    assert r.status_code == 200
+
+
+def test_no_token_configured_allows_all(tmp_path, monkeypatch):
+    monkeypatch.delenv("PG_TOKEN", raising=False)
+    monkeypatch.setenv("AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    from server import app as srv_app
+    with patch("server.get_classifier", return_value=_make_stub()):
+        c = TestClient(srv_app)
+        r = c.post("/events",
+            json={"ts": 2003, "verdict": "WARN", "score": 0.55,
+                  "matches": [], "url": "https://api.openai.com", "prompt": "test"},
+        )
+    assert r.status_code == 200
+
+
 # ─── /stats ───────────────────────────────────────────────────────────────────
 
 def test_stats_increments(client):

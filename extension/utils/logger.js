@@ -1,10 +1,23 @@
 const PROXY_ENDPOINT = "https://promptguard-l2-production.up.railway.app/events";
 
+// Injected at build time by esbuild --define:PG_TOKEN='"..."'
+// Falls back to empty string in dev builds without a token configured.
+/* global PG_TOKEN */
+const _TOKEN = typeof PG_TOKEN !== "undefined" ? PG_TOKEN : "";
+
+const _HEADERS = {
+  "Content-Type": "application/json",
+  ...(_TOKEN ? { "X-PG-Token": _TOKEN } : {}),
+};
+
 /**
  * Send a detection event to the proxy (ELK forwarding happens server-side).
  * Fire-and-forget — never awaited, never blocks the request pipeline.
  *
- * @param {{ verdict: string, score: number, matches: string[], url: string, provider: string }} event
+ * Note: sendBeacon cannot set custom headers (X-PG-Token), so we use
+ * fetch with keepalive:true which survives page unload in modern browsers.
+ *
+ * @param {{ verdict: string, score: number, matches: string[], url: string, prompt?: string }} event
  */
 export function logEvent(event) {
   const payload = {
@@ -17,16 +30,9 @@ export function logEvent(event) {
     ua: navigator.userAgent.slice(0, 120),
   };
 
-  // Use sendBeacon when available — survives page unload, no CORS preflight issue
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon(PROXY_ENDPOINT, JSON.stringify(payload));
-    return;
-  }
-
-  // Fallback
   fetch(PROXY_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: _HEADERS,
     body: JSON.stringify(payload),
     keepalive: true,
   }).catch(() => {

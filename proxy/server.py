@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -31,6 +32,15 @@ logger = logging.getLogger("promptguard.proxy")
 
 AUDIT_LOG = Path(os.getenv("AUDIT_LOG", "audit.jsonl"))
 L2_BLOCK_THRESHOLD = float(os.getenv("L2_BLOCK_THRESHOLD", "0.80"))
+
+
+def _verify_token(request: Request) -> bool:
+    """Return True if auth passes. Auth is disabled when PG_TOKEN env var is unset."""
+    token = os.getenv("PG_TOKEN", "")
+    if not token:
+        return True
+    header = request.headers.get("X-PG-Token", "")
+    return secrets.compare_digest(header, token)
 
 app = FastAPI(
     title="PromptGuard L2 Proxy",
@@ -85,7 +95,10 @@ def _write_audit(record: dict) -> None:
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.post("/events", response_model=L2Response)
-async def analyze_event(event: L1Event):
+async def analyze_event(event: L1Event, request: Request):
+    if not _verify_token(request):
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
     t0 = time.perf_counter()
 
     _stats["received"] += 1

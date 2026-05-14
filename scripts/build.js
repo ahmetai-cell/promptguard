@@ -39,6 +39,11 @@ mkdirSync(join(DIST, "icons"), { recursive: true });
 
 // ─── Shared esbuild options ───────────────────────────────────────────────────
 
+// PG_TOKEN is baked in at build time. Set the env var before building:
+//   PG_TOKEN=your_secret npm run build
+// Omitting PG_TOKEN produces a bundle without auth (dev/test builds are fine).
+const pgToken = process.env.PG_TOKEN ?? "";
+
 const BASE = {
   bundle:    true,
   platform:  "browser",
@@ -46,6 +51,9 @@ const BASE = {
   sourcemap: isProd ? false : "inline",
   minify:    isProd,
   logLevel:  "info",
+  define: {
+    PG_TOKEN: JSON.stringify(pgToken),
+  },
 };
 
 // ─── Entry points ─────────────────────────────────────────────────────────────
