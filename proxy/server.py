@@ -17,6 +17,7 @@ import os
 import secrets
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+import db
 from classifier import get_classifier
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -65,12 +67,34 @@ def _check_rate(ip: str) -> bool:
     return True
 
 
+# ─── Audit log — DB primary, jsonl fallback ───────────────────────────────────
+
+async def _write_audit(record: dict) -> None:
+    if await db.write(record):
+        return
+    try:
+        with AUDIT_LOG.open("a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception as exc:
+        logger.warning("Audit log write failed: %s", exc)
+
+
+# ─── App lifespan ─────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await db.init()
+    yield
+    await db.close()
+
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="PromptGuard L2 Proxy",
     description="Semantic analysis layer for browser-flagged prompts.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -105,16 +129,6 @@ class L2Response(BaseModel):
     l2_score: float
     final_verdict: str                  # authoritative decision
     latency_ms: float
-
-
-# ─── Audit log ────────────────────────────────────────────────────────────────
-
-def _write_audit(record: dict) -> None:
-    try:
-        with AUDIT_LOG.open("a") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception as exc:
-        logger.warning("Audit log write failed: %s", exc)
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -173,7 +187,7 @@ async def analyze_event(event: L1Event, request: Request):
         "final_verdict": final_verdict,
         "latency_ms": latency_ms,
     }
-    _write_audit(audit_record)
+    await _write_audit(audit_record)
 
     logger.info(
         "L1=%s(%.2f) L2=%s(%.2f) → %s [%.0fms]",

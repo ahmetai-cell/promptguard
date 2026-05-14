@@ -80,7 +80,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install fastapi pydantic httpx pytest pytest-asyncio
+        run: pip install fastapi pydantic httpx pytest pytest-asyncio asyncpg
 
       - name: Run proxy tests
         run: pytest tests/ -v
