@@ -69,3 +69,54 @@ function safeParseBase64Json(str) {
     return null;
   }
 }
+
+/**
+ * Extract a standard messages array from a WebSocket `send()` payload.
+ * Handles:
+ *   - OpenAI Realtime API  (type: "conversation.item.create")
+ *   - ChatGPT web protocol (action: "next", messages: [...])
+ *   - Generic JSON         (messages / text / content / prompt)
+ *   - Binary frames        → returns null (can't parse)
+ *
+ * @param {string | ArrayBuffer | Blob} data — raw ws.send() argument
+ * @returns {Array<{role: string, content: string}> | null}
+ */
+export function extractWsMessages(data) {
+  if (typeof data !== "string") return null;   // binary frames — skip
+
+  let msg;
+  try { msg = JSON.parse(data); } catch { return null; }
+
+  // OpenAI Realtime API  (wss://api.openai.com/v1/realtime)
+  if (msg.type === "conversation.item.create") {
+    const text = (msg.item?.content ?? [])
+      .map((p) => p.text ?? p.transcript ?? "")
+      .filter(Boolean)
+      .join("\n");
+    return text ? [{ role: "user", content: text }] : null;
+  }
+
+  // ChatGPT web  (action:"next" protocol over wss://chat.openai.com)
+  if (msg.action === "next" && Array.isArray(msg.messages)) {
+    const out = msg.messages
+      .filter((m) => (m.author?.role ?? m.role) === "user")
+      .map((m) => {
+        const c = m.content;
+        if (typeof c === "string") return { role: "user", content: c };
+        if (c?.content_type === "text" && Array.isArray(c.parts))
+          return { role: "user", content: c.parts.join("\n") };
+        return null;
+      })
+      .filter(Boolean);
+    return out.length ? out : null;
+  }
+
+  // Standard messages array (many custom proxies)
+  if (Array.isArray(msg.messages)) return msg.messages;
+
+  // Flat text fields
+  const flat = msg.text ?? msg.content ?? msg.message ?? msg.prompt ?? msg.query ?? null;
+  if (typeof flat === "string" && flat.trim()) return [{ role: "user", content: flat }];
+
+  return null;
+}

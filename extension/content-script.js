@@ -7,7 +7,7 @@
  * is available in MAIN world content scripts since Chrome 116.
  */
 
-import { extractMessages } from "./utils/extractor.js";
+import { extractMessages, extractWsMessages } from "./utils/extractor.js";
 import { analyzeMessages } from "./detector/index.js";
 
 const LLM_URL_PATTERNS = [
@@ -254,6 +254,54 @@ XMLHttpRequest.prototype.send = function (body) {
 
   return _send.call(this, body);
 };
+
+// ─── WebSocket intercept ──────────────────────────────────────────────────────
+// Covers ChatGPT web (action:"next"), OpenAI Realtime API, and generic proxies.
+// ws.send() is synchronous — L2 hold is not possible (same constraint as XHR).
+// L1 BLOCK → message dropped + overlay shown. WARN → logged, message passes.
+
+const _WS = window.WebSocket;
+
+window.WebSocket = function PGWebSocket(url, protocols) {
+  const ws = protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
+
+  if (!isLLMRequest(String(url))) return ws;
+
+  try {
+    if (sessionStorage.getItem(_OVERRIDE_KEY)) {
+      sessionStorage.removeItem(_OVERRIDE_KEY);
+      return ws;
+    }
+  } catch { /* private browsing */ }
+
+  const _send = ws.send.bind(ws);
+  ws.send = function pgSend(data) {
+    const messages = extractWsMessages(data);
+    if (messages) {
+      const result = analyzeMessages(messages);
+
+      if (result.verdict === "BLOCK") {
+        postVerdict("BLOCK", result.score, result.matches, String(url));
+        showBlockOverlay(result.score, result.matches);
+        return;   // drop — do not forward to server
+      }
+
+      if (result.verdict === "WARN") {
+        const prompt = extractPromptText(messages);
+        postVerdict("WARN", result.score, result.matches, String(url), prompt);
+      }
+    }
+    return _send(data);
+  };
+
+  return ws;
+};
+
+// Preserve prototype chain so `instanceof WebSocket` keeps working
+window.WebSocket.prototype = _WS.prototype;
+["CONNECTING", "OPEN", "CLOSING", "CLOSED"].forEach((k) => {
+  window.WebSocket[k] = _WS[k];
+});
 
 // ─── Verdict listener — relay to service worker ───────────────────────────────
 

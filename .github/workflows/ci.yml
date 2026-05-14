@@ -45,6 +45,7 @@ jobs:
           if (!cs.includes('extractMessages')) fail('extractMessages not bundled');
           if (!cs.includes('_pg_host')) fail('block overlay not bundled');
           if (!cs.includes('_pg_override')) fail('override key not bundled');
+          if (!cs.includes('PGWebSocket')) fail('WebSocket interceptor not bundled');
           console.log('Bundle integrity ✅');
           EOF
 
