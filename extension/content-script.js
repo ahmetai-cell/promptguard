@@ -14,9 +14,11 @@ const LLM_URL_PATTERNS = [
   "openai.com/v1/chat/completions",
   "anthropic.com/v1/messages",
   "bedrock-runtime",
-  "/api/chat",           // common self-hosted / proxy paths
+  "/api/chat",
   "/v1/completions",
 ];
+
+const _OVERRIDE_KEY = "_pg_override";
 
 function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
@@ -34,37 +36,122 @@ function extractPromptText(messages) {
     .filter((m) => m.role === "user")
     .map((m) => (typeof m.content === "string" ? m.content : ""))
     .join("\n")
-    .slice(0, 2000); // cap at 2000 chars — enough for classifier, avoids large payloads
+    .slice(0, 2000);
 }
 
-/**
- * Send a WARN event to the service worker and wait up to 400ms for an L2 verdict.
- * Returns "ALLOW" on timeout, error, or any non-BLOCK response — fail open.
- *
- * Requires Chrome 116+ for chrome.runtime.sendMessage in MAIN world.
- */
+// ─── Block overlay ─────────────────────────────────────────────────────────────
+// Rendered in a Shadow DOM so page styles can't bleed in or out.
+
+function showBlockOverlay(score, matches) {
+  document.getElementById("_pg_host")?.remove();
+
+  const host = document.createElement("div");
+  host.id = "_pg_host";
+  // All layout styles on host itself so shadow boundary is clean
+  Object.assign(host.style, {
+    position: "fixed", bottom: "20px", right: "20px",
+    zIndex: "2147483647", all: "initial",
+  });
+  document.body?.appendChild(host);
+
+  const shadow = host.attachShadow({ mode: "closed" });
+
+  const topTags = matches
+    .slice(0, 3)
+    .map((m) => `<span class="tag">${m.split(":")[1] ?? m}</span>`)
+    .join("");
+
+  shadow.innerHTML = `
+    <style>
+      * { box-sizing: border-box; }
+      .card {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #12122a; color: #e8e8f0;
+        border: 1px solid #2a2a50; border-radius: 14px;
+        padding: 16px 18px; width: 310px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+        animation: up 0.22s ease-out;
+      }
+      @keyframes up {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .row   { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .icon  { font-size: 19px; line-height: 1; }
+      .title { font-size: 14px; font-weight: 650; flex: 1; }
+      .x     { background: none; border: none; color: #666; font-size: 16px;
+                cursor: pointer; padding: 0; line-height: 1; }
+      .x:hover { color: #ccc; }
+      .score { font-size: 12px; color: #ff7070; margin-bottom: 7px; }
+      .tags  { margin-bottom: 13px; line-height: 1.8; }
+      .tag   { display: inline-block; background: #1e1e42; color: #8a92ff;
+                font-size: 11px; padding: 2px 7px; border-radius: 5px; margin-right: 4px; }
+      .btns  { display: flex; gap: 8px; }
+      .send  { flex: 1; padding: 8px; border-radius: 8px;
+                border: 1px solid #ff5555; background: transparent;
+                color: #ff7070; font-size: 12px; cursor: pointer; }
+      .send:hover  { background: rgba(255,85,85,0.1); }
+      .ok    { flex: 1; padding: 8px; border-radius: 8px; border: none;
+                background: #252548; color: #ccc; font-size: 12px; cursor: pointer; }
+      .ok:hover { background: #2e2e58; }
+    </style>
+    <div class="card">
+      <div class="row">
+        <span class="icon">🛡</span>
+        <span class="title">Injection blocked</span>
+        <button class="x" aria-label="Dismiss">✕</button>
+      </div>
+      <div class="score">Risk score: ${(score * 100).toFixed(0)}%</div>
+      ${topTags ? `<div class="tags">${topTags}</div>` : ""}
+      <div class="btns">
+        <button class="send">Send anyway</button>
+        <button class="ok">Dismiss</button>
+      </div>
+    </div>
+  `;
+
+  const autoClose = setTimeout(() => host.remove(), 8000);
+  const close = () => { clearTimeout(autoClose); host.remove(); };
+
+  shadow.querySelector(".x").addEventListener("click", close);
+  shadow.querySelector(".ok").addEventListener("click", close);
+  shadow.querySelector(".send").addEventListener("click", () => {
+    // Grant one override pass-through; user must re-submit their message
+    try { sessionStorage.setItem(_OVERRIDE_KEY, "1"); } catch { /* private browsing */ }
+    close();
+  });
+}
+
+// ─── L2 escalation ────────────────────────────────────────────────────────────
+
 async function queryL2(prompt, score, matches, url) {
   try {
     const l2Promise = chrome.runtime.sendMessage({
       type: "L2_CHECK", prompt, score, matches, url,
     });
-    const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => resolve(null), 400)
-    );
-    const response = await Promise.race([l2Promise, timeoutPromise]);
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 400));
+    const response = await Promise.race([l2Promise, timeout]);
     return response?.verdict === "BLOCK" ? "BLOCK" : "ALLOW";
   } catch {
-    return "ALLOW";  // chrome.runtime unavailable or SW crashed → fail open
+    return "ALLOW";
   }
 }
 
-// ─── Fetch intercept ───────────────────────────────────────────────────────────
+// ─── Fetch intercept ──────────────────────────────────────────────────────────
 
 const _fetch = window.fetch.bind(window);
 window.fetch = async function (input, init = {}) {
   const url = typeof input === "string" ? input : input?.url ?? "";
 
   if (!isLLMRequest(url)) return _fetch(input, init);
+
+  // One-shot override: user clicked "Send anyway" in the block overlay
+  try {
+    if (sessionStorage.getItem(_OVERRIDE_KEY)) {
+      sessionStorage.removeItem(_OVERRIDE_KEY);
+      return _fetch(input, init);
+    }
+  } catch { /* private browsing — skip override check */ }
 
   const body =
     init.body instanceof ReadableStream
@@ -82,6 +169,7 @@ window.fetch = async function (input, init = {}) {
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, url);
+        showBlockOverlay(result.score, result.matches);
         return Promise.reject(
           Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
             promptguard: true,
@@ -91,13 +179,11 @@ window.fetch = async function (input, init = {}) {
 
       if (result.verdict === "WARN") {
         const prompt = extractPromptText(extracted.messages);
-
-        // Hold the request up to 400ms for an L2 semantic verdict.
-        // If the proxy confirms injection → block; otherwise allow through.
         const l2Verdict = await queryL2(prompt, result.score, result.matches, url);
 
         if (l2Verdict === "BLOCK") {
           postVerdict("BLOCK", result.score, result.matches, url, prompt);
+          showBlockOverlay(result.score, result.matches);
           return Promise.reject(
             Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
               promptguard: true,
@@ -119,8 +205,8 @@ window.fetch = async function (input, init = {}) {
 };
 
 // ─── XMLHttpRequest intercept ─────────────────────────────────────────────────
-// Note: XHR.send() is synchronous — L2 hold is not possible here.
-// L1 BLOCK verdicts still abort XHR; WARN events are logged fire-and-forget.
+// XHR.send() is synchronous — L2 hold not possible.
+// Override check + L1 BLOCK (abort + overlay) still work.
 
 const _open = XMLHttpRequest.prototype.open;
 const _send = XMLHttpRequest.prototype.send;
@@ -132,28 +218,40 @@ XMLHttpRequest.prototype.open = function (method, url, ...rest) {
 
 XMLHttpRequest.prototype.send = function (body) {
   const url = this._pgUrl ?? "";
-  if (isLLMRequest(url) && body) {
-    const rawBody = typeof body === "string" ? body : null;
-    if (rawBody) {
-      const extracted = extractMessages(url, rawBody);
-      if (extracted) {
-        const result = analyzeMessages(extracted.messages);
 
-        if (result.verdict === "BLOCK") {
-          postVerdict("BLOCK", result.score, result.matches, url);
-          this.abort();
-          return;
-        }
+  if (isLLMRequest(url)) {
+    try {
+      if (sessionStorage.getItem(_OVERRIDE_KEY)) {
+        sessionStorage.removeItem(_OVERRIDE_KEY);
+        return _send.call(this, body);
+      }
+    } catch { /* private browsing */ }
 
-        if (result.verdict === "WARN") {
-          const prompt = extractPromptText(extracted.messages);
-          postVerdict("WARN", result.score, result.matches, url, prompt);
-          this.setRequestHeader("X-PromptGuard-Flag", "warn");
-          this.setRequestHeader("X-PromptGuard-Score", String(result.score));
+    if (body) {
+      const rawBody = typeof body === "string" ? body : null;
+      if (rawBody) {
+        const extracted = extractMessages(url, rawBody);
+        if (extracted) {
+          const result = analyzeMessages(extracted.messages);
+
+          if (result.verdict === "BLOCK") {
+            postVerdict("BLOCK", result.score, result.matches, url);
+            showBlockOverlay(result.score, result.matches);
+            this.abort();
+            return;
+          }
+
+          if (result.verdict === "WARN") {
+            const prompt = extractPromptText(extracted.messages);
+            postVerdict("WARN", result.score, result.matches, url, prompt);
+            this.setRequestHeader("X-PromptGuard-Flag", "warn");
+            this.setRequestHeader("X-PromptGuard-Score", String(result.score));
+          }
         }
       }
     }
   }
+
   return _send.call(this, body);
 };
 
