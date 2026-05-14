@@ -26,6 +26,8 @@ def _make_stub(label="LEGITIMATE", score=0.95):
 @pytest.fixture(autouse=True)
 def _patch_classifier(tmp_path, monkeypatch):
     monkeypatch.setenv("AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    import server as srv
+    srv._rl_buckets.clear()   # reset rate-limit state between tests
     with patch("server.get_classifier", return_value=_make_stub()):
         yield
 
@@ -163,6 +165,23 @@ def test_audit_log_written(tmp_path, monkeypatch):
     record = json.loads(audit_path.read_text().strip().splitlines()[-1])
     assert record["l2_label"] == "INJECTION"
     assert "final_verdict" in record
+
+
+# ─── Rate limiting ───────────────────────────────────────────────────────────
+
+def test_rate_limit_returns_429(client, monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_MAX", "2")
+    payload = {
+        "ts": 9000, "verdict": "WARN", "score": 0.55,
+        "matches": [], "url": "https://api.openai.com", "prompt": "test",
+    }
+    r1 = client.post("/events", json=payload)
+    r2 = client.post("/events", json=payload)
+    r3 = client.post("/events", json=payload)   # should be rate-limited
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r3.status_code == 429
 
 
 # ─── Auth token (X-PG-Token) ─────────────────────────────────────────────────

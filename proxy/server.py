@@ -32,7 +32,10 @@ logger = logging.getLogger("promptguard.proxy")
 
 AUDIT_LOG = Path(os.getenv("AUDIT_LOG", "audit.jsonl"))
 L2_BLOCK_THRESHOLD = float(os.getenv("L2_BLOCK_THRESHOLD", "0.80"))
+_RL_WINDOW = 60.0   # sliding window in seconds
 
+
+# ─── Auth ─────────────────────────────────────────────────────────────────────
 
 def _verify_token(request: Request) -> bool:
     """Return True if auth passes. Auth is disabled when PG_TOKEN env var is unset."""
@@ -41,6 +44,28 @@ def _verify_token(request: Request) -> bool:
         return True
     header = request.headers.get("X-PG-Token", "")
     return secrets.compare_digest(header, token)
+
+
+# ─── Rate limiter (sliding window, in-memory, per IP) ─────────────────────────
+
+_rl_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_rate(ip: str) -> bool:
+    """Return False if this IP has exceeded the rate limit."""
+    limit = int(os.getenv("RATE_LIMIT_MAX", "100"))
+    now = time.monotonic()
+    bucket = _rl_buckets[ip]
+    cutoff = now - _RL_WINDOW
+    while bucket and bucket[0] < cutoff:
+        bucket.pop(0)
+    if len(bucket) >= limit:
+        return False
+    bucket.append(now)
+    return True
+
+
+# ─── App ──────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="PromptGuard L2 Proxy",
@@ -96,6 +121,12 @@ def _write_audit(record: dict) -> None:
 
 @app.post("/events", response_model=L2Response)
 async def analyze_event(event: L1Event, request: Request):
+    ip = request.client.host if request.client else "127.0.0.1"
+
+    if not _check_rate(ip):
+        _stats["rate_limited"] += 1
+        return JSONResponse(status_code=429, content={"detail": "Too Many Requests"})
+
     if not _verify_token(request):
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
