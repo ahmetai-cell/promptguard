@@ -28,6 +28,8 @@ from pydantic import BaseModel, Field
 
 import db
 from classifier import get_classifier
+from embedder import get_embedder
+from normalizer import normalize
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("promptguard.proxy")
@@ -127,6 +129,8 @@ class L2Response(BaseModel):
     l2_verdict: str                     # "BLOCK" | "ALLOW"
     l2_label: str                       # "INJECTION" | "LEGITIMATE"
     l2_score: float
+    embed_score: float = 0.0            # cosine similarity to nearest attack centroid
+    embed_category: str = ""            # closest attack category
     final_verdict: str                  # authoritative decision
     latency_ms: float
 
@@ -162,10 +166,17 @@ async def analyze_event(event: L1Event, request: Request):
             latency_ms=round((time.perf_counter() - t0) * 1000, 2),
         )
 
-    clf = get_classifier()
-    result = clf.classify(event.prompt)
+    clean_prompt = normalize(event.prompt)
 
-    l2_verdict = "BLOCK" if (result.is_injection and result.score >= L2_BLOCK_THRESHOLD) else "ALLOW"
+    clf = get_classifier()
+    result = clf.classify(clean_prompt)
+
+    emb_result = get_embedder().score(clean_prompt)
+
+    deberta_block = result.is_injection and result.score >= L2_BLOCK_THRESHOLD
+    embed_block   = emb_result.is_injection
+
+    l2_verdict = "BLOCK" if (deberta_block or embed_block) else "ALLOW"
 
     # Final: BLOCK if either L1 was already BLOCK, or L2 says BLOCK
     final_verdict = "BLOCK" if (event.verdict == "BLOCK" or l2_verdict == "BLOCK") else "ALLOW"
@@ -183,6 +194,8 @@ async def analyze_event(event: L1Event, request: Request):
         "l1_matches": event.matches,
         "l2_label": result.label,
         "l2_score": result.score,
+        "embed_score": emb_result.score,
+        "embed_category": emb_result.category,
         "l2_verdict": l2_verdict,
         "final_verdict": final_verdict,
         "latency_ms": latency_ms,
@@ -190,9 +203,10 @@ async def analyze_event(event: L1Event, request: Request):
     await _write_audit(audit_record)
 
     logger.info(
-        "L1=%s(%.2f) L2=%s(%.2f) → %s [%.0fms]",
+        "L1=%s(%.2f) DeBERTa=%s(%.2f) Embed=%.2f(%s) → %s [%.0fms]",
         event.verdict, event.score,
         result.label, result.score,
+        emb_result.score, emb_result.category or "-",
         final_verdict, latency_ms,
     )
 
@@ -202,6 +216,8 @@ async def analyze_event(event: L1Event, request: Request):
         l2_verdict=l2_verdict,
         l2_label=result.label,
         l2_score=result.score,
+        embed_score=emb_result.score,
+        embed_category=emb_result.category,
         final_verdict=final_verdict,
         latency_ms=latency_ms,
     )

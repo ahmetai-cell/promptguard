@@ -1,4 +1,5 @@
 import { PATTERNS, HEURISTICS } from "./patterns.js";
+import { normalizeText } from "./normalizer.js";
 
 const BLOCK_THRESHOLD = 0.75;
 const WARN_THRESHOLD  = 0.45;
@@ -17,20 +18,23 @@ export function analyzeText(text) {
     return { verdict: "ALLOW", score: 0, matches: [] };
   }
 
+  // Normalize before pattern matching so homoglyphs / zero-width tricks don't evade
+  const normalized = normalizeText(text);
+
   const matches = [];
   let maxSeverity = 0;
 
-  // Pattern matching
+  // Pattern matching (run on normalized text)
   for (const { id, pattern, severity, tag } of PATTERNS) {
-    if (pattern.test(text)) {
+    if (pattern.test(normalized)) {
       matches.push(`${id}:${tag}`);
       if (severity > maxSeverity) maxSeverity = severity;
     }
   }
 
-  // Heuristic checks
+  // Heuristic checks (run on normalized text)
   for (const h of HEURISTICS) {
-    if (h.check(text)) {
+    if (h.check(normalized)) {
       matches.push(`${h.id}:${h.name}`);
       if (h.severity > maxSeverity) maxSeverity = h.severity;
     }

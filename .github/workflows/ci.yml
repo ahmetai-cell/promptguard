@@ -81,7 +81,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install fastapi pydantic httpx pytest pytest-asyncio asyncpg
+        run: pip install fastapi pydantic httpx pytest pytest-asyncio asyncpg numpy
 
       - name: Run proxy tests
         run: pytest tests/ -v
@@ -132,3 +132,26 @@ jobs:
           }
           console.log('Pattern count ✅');
           EOF
+
+  # ─── Red-team evasion guard ──────────────────────────────────────────────────
+  redteam:
+    name: Red-Team Evasion Guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: npm ci
+
+      - name: Run red-team suite (CI mode)
+        run: python -m redteam.runner --ci

@@ -201,8 +201,70 @@ window.fetch = async function (input, init = {}) {
     }
   }
 
-  return _fetch(input, init);
+  const response = await _fetch(input, init);
+
+  // ── SSE response scan (indirect injection detection) ─────────────────────
+  // If the LLM streams back content that looks like it's relaying an injection
+  // (e.g. model was tricked by a poisoned RAG document), alert the user.
+  // Fire-and-forget: we scan the tee'd stream without blocking page delivery.
+  if (response.body && response.headers.get("content-type")?.includes("text/event-stream")) {
+    try {
+      const [pageStream, scanStream] = response.body.tee();
+      _scanSSE(scanStream, url).catch(() => {});
+      return new Response(pageStream, {
+        status:     response.status,
+        statusText: response.statusText,
+        headers:    response.headers,
+      });
+    } catch { /* tee not supported — skip */ }
+  }
+
+  return response;
 };
+
+// ─── SSE output scanner ───────────────────────────────────────────────────────
+// Reads a tee'd SSE response stream and fires a WARN postMessage if the model's
+// output contains injection-relay signals. Detection only — cannot retroactively
+// block streamed content already delivered to the page.
+
+async function _scanSSE(stream, url) {
+  const reader  = stream.getReader();
+  const decoder = new TextDecoder();
+  let   buf     = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const lines = buf.split("\n");
+      buf = lines.pop();   // keep incomplete last line
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]" || !raw) continue;
+        try {
+          const chunk = JSON.parse(raw);
+          // OpenAI streaming delta
+          const delta = chunk?.choices?.[0]?.delta?.content
+                     ?? chunk?.choices?.[0]?.text
+                     ?? null;
+          if (delta) {
+            const result = analyzeText(delta);
+            if (result.verdict === "BLOCK") {
+              postVerdict("BLOCK", result.score, result.matches, url);
+              showBlockOverlay(result.score, result.matches);
+              reader.cancel();
+              return;
+            }
+          }
+        } catch { /* non-JSON SSE line */ }
+      }
+    }
+  } catch { /* stream cancelled or ended */ }
+}
 
 // ─── XMLHttpRequest intercept ─────────────────────────────────────────────────
 // XHR.send() is synchronous — L2 hold not possible.
@@ -259,6 +321,25 @@ XMLHttpRequest.prototype.send = function (body) {
 // Covers ChatGPT web (action:"next"), OpenAI Realtime API, and generic proxies.
 // ws.send() is synchronous — L2 hold is not possible (same constraint as XHR).
 // L1 BLOCK → message dropped + overlay shown. WARN → logged, message passes.
+//
+// Rolling buffer: accumulates user content per-socket over a 30-second window.
+// Catches incremental attacks where each chunk is benign alone (e.g. "ignore" +
+// " previous" + " instructions" sent as three separate messages).
+
+// Per-socket accumulator: ws → { text: string, timer: id }
+const _wsBuffers = new WeakMap();
+const _WS_BUFFER_MAX  = 4000;   // chars, prevents unbounded memory
+const _WS_BUFFER_TTL  = 30_000; // ms — reset after 30s of inactivity
+
+function _wsAccumulate(ws, userText) {
+  let buf = _wsBuffers.get(ws) ?? { text: "", timer: null };
+  clearTimeout(buf.timer);
+  const combined = (buf.text + "\n" + userText).slice(-_WS_BUFFER_MAX);
+  buf.timer = setTimeout(() => _wsBuffers.delete(ws), _WS_BUFFER_TTL);
+  buf.text = combined;
+  _wsBuffers.set(ws, buf);
+  return combined;
+}
 
 const _WS = window.WebSocket;
 
@@ -278,12 +359,26 @@ window.WebSocket = function PGWebSocket(url, protocols) {
   ws.send = function pgSend(data) {
     const messages = extractWsMessages(data);
     if (messages) {
+      // ── Single-message analysis (existing behaviour) ──────────────────────
       const result = analyzeMessages(messages);
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, String(url));
         showBlockOverlay(result.score, result.matches);
         return;   // drop — do not forward to server
+      }
+
+      // ── Rolling-buffer analysis (incremental injection detection) ─────────
+      const userText = extractPromptText(messages);
+      if (userText) {
+        const accumulated = _wsAccumulate(ws, userText);
+        const bufResult   = analyzeMessages([{ role: "user", content: accumulated }]);
+
+        if (bufResult.verdict === "BLOCK" && result.verdict !== "BLOCK") {
+          postVerdict("BLOCK", bufResult.score, bufResult.matches, String(url));
+          showBlockOverlay(bufResult.score, bufResult.matches);
+          return;   // incremental attack — drop this message
+        }
       }
 
       if (result.verdict === "WARN") {
