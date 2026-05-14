@@ -11,8 +11,8 @@ const _HEADERS = {
 };
 
 /**
- * Send a detection event to the proxy (ELK forwarding happens server-side).
- * Fire-and-forget — never awaited, never blocks the request pipeline.
+ * Send a detection event to the proxy — fire-and-forget audit log.
+ * Called for BLOCK verdicts and as a fallback when L2 is unavailable.
  *
  * Note: sendBeacon cannot set custom headers (X-PG-Token), so we use
  * fetch with keepalive:true which survives page unload in modern browsers.
@@ -27,7 +27,7 @@ export function logEvent(event) {
     matches: event.matches,
     url: event.url,
     prompt: event.prompt ?? null,
-    ua: navigator.userAgent.slice(0, 120),
+    ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 120) : "",
   };
 
   fetch(PROXY_ENDPOINT, {
@@ -38,6 +38,41 @@ export function logEvent(event) {
   }).catch(() => {
     // Swallow — logging should never break the extension
   });
+}
+
+/**
+ * Send a WARN event to the proxy and await the L2 verdict.
+ * Called by the service worker in response to an L2_CHECK message.
+ * Timeout: 350ms (leaves buffer for the 400ms client-side deadline).
+ * Always returns "ALLOW" on any error — fail open.
+ *
+ * @param {{ score: number, matches: string[], url: string, prompt?: string }} event
+ * @returns {Promise<"BLOCK" | "ALLOW">}
+ */
+export async function checkL2(event) {
+  const payload = {
+    ts: Date.now(),
+    verdict: "WARN",
+    score: event.score,
+    matches: event.matches ?? [],
+    url: event.url ?? "",
+    prompt: event.prompt ?? null,
+    ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 120) : "",
+  };
+
+  try {
+    const resp = await fetch(PROXY_ENDPOINT, {
+      method: "POST",
+      headers: _HEADERS,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(350),
+    });
+    if (!resp.ok) return "ALLOW";
+    const data = await resp.json();
+    return data.final_verdict === "BLOCK" ? "BLOCK" : "ALLOW";
+  } catch {
+    return "ALLOW";  // network error, timeout, proxy down → fail open
+  }
 }
 
 /**

@@ -3,8 +3,8 @@
  * Intercepts fetch + XMLHttpRequest before they leave the browser.
  *
  * Why MAIN world: we need to patch the page's own fetch/XHR, not an isolated copy.
- * Trade-off: no access to chrome.* APIs here — we use window.postMessage to talk
- * to the service worker.
+ * Trade-off: no access to most chrome.* APIs here — but chrome.runtime.sendMessage
+ * is available in MAIN world content scripts since Chrome 116.
  */
 
 import { extractMessages } from "./utils/extractor.js";
@@ -35,6 +35,27 @@ function extractPromptText(messages) {
     .map((m) => (typeof m.content === "string" ? m.content : ""))
     .join("\n")
     .slice(0, 2000); // cap at 2000 chars — enough for classifier, avoids large payloads
+}
+
+/**
+ * Send a WARN event to the service worker and wait up to 400ms for an L2 verdict.
+ * Returns "ALLOW" on timeout, error, or any non-BLOCK response — fail open.
+ *
+ * Requires Chrome 116+ for chrome.runtime.sendMessage in MAIN world.
+ */
+async function queryL2(prompt, score, matches, url) {
+  try {
+    const l2Promise = chrome.runtime.sendMessage({
+      type: "L2_CHECK", prompt, score, matches, url,
+    });
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => resolve(null), 400)
+    );
+    const response = await Promise.race([l2Promise, timeoutPromise]);
+    return response?.verdict === "BLOCK" ? "BLOCK" : "ALLOW";
+  } catch {
+    return "ALLOW";  // chrome.runtime unavailable or SW crashed → fail open
+  }
 }
 
 // ─── Fetch intercept ───────────────────────────────────────────────────────────
@@ -70,6 +91,20 @@ window.fetch = async function (input, init = {}) {
 
       if (result.verdict === "WARN") {
         const prompt = extractPromptText(extracted.messages);
+
+        // Hold the request up to 400ms for an L2 semantic verdict.
+        // If the proxy confirms injection → block; otherwise allow through.
+        const l2Verdict = await queryL2(prompt, result.score, result.matches, url);
+
+        if (l2Verdict === "BLOCK") {
+          postVerdict("BLOCK", result.score, result.matches, url, prompt);
+          return Promise.reject(
+            Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
+              promptguard: true,
+            })
+          );
+        }
+
         postVerdict("WARN", result.score, result.matches, url, prompt);
         init.headers = {
           ...(init.headers || {}),
@@ -84,6 +119,8 @@ window.fetch = async function (input, init = {}) {
 };
 
 // ─── XMLHttpRequest intercept ─────────────────────────────────────────────────
+// Note: XHR.send() is synchronous — L2 hold is not possible here.
+// L1 BLOCK verdicts still abort XHR; WARN events are logged fire-and-forget.
 
 const _open = XMLHttpRequest.prototype.open;
 const _send = XMLHttpRequest.prototype.send;

@@ -1,32 +1,41 @@
-import { logEvent, storeEvent } from "./utils/logger.js";
+import { logEvent, storeEvent, checkL2 } from "./utils/logger.js";
 
 // Stats kept in memory for the popup badge
 let sessionStats = { blocked: 0, warned: 0, allowed: 0 };
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
-  if (msg.type !== "VERDICT") return;
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  switch (msg.type) {
+    case "VERDICT": {
+      const { verdict, score, matches, url, prompt } = msg;
+      sessionStats[verdict.toLowerCase()] =
+        (sessionStats[verdict.toLowerCase()] ?? 0) + 1;
+      updateBadge(verdict);
 
-  const { verdict, score, matches, url, prompt } = msg;
+      const event = { verdict, score, matches, url, prompt, tabId: sender.tab?.id };
+      storeEvent(event);
 
-  sessionStats[verdict.toLowerCase()] =
-    (sessionStats[verdict.toLowerCase()] ?? 0) + 1;
+      // Log BLOCK verdicts to proxy audit. WARN verdicts that went through
+      // L2_CHECK are already logged by the proxy during L2 analysis.
+      if (verdict === "BLOCK") {
+        logEvent(event);
+        showBlockNotification(url, score);
+      }
+      break;
+    }
 
-  updateBadge(verdict);
+    case "L2_CHECK": {
+      // Content script is holding a WARN request for up to 400ms waiting for
+      // this verdict. Return true to keep sendResponse alive for async reply.
+      checkL2(msg)
+        .then((verdict) => sendResponse({ verdict }))
+        .catch(() => sendResponse({ verdict: "ALLOW" }));
+      return true;
+    }
 
-  const event = { verdict, score, matches, url, prompt, tabId: sender.tab?.id };
-  storeEvent(event);
-  if (verdict === "WARN") logEvent(event);
-
-  if (verdict === "BLOCK") {
-    showBlockNotification(url, score);
-    logEvent(event);
-  }
-});
-
-// Popup asks for stats
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === "GET_STATS") {
-    sendResponse(sessionStats);
+    case "GET_STATS": {
+      sendResponse(sessionStats);
+      break;
+    }
   }
 });
 
