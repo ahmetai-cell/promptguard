@@ -328,12 +328,18 @@ def kpi_check(result: EvalResult) -> dict[str, bool]:
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else None
-    if not path:
-        print("Usage: python evaluator.py <dataset.csv|jsonl>")
+    import argparse
+    parser = argparse.ArgumentParser(description="PromptGuard KPI Evaluator")
+    parser.add_argument("dataset", nargs="?", help="Path to labeled dataset (CSV/JSONL)")
+    parser.add_argument("--ci", action="store_true",
+                        help="Exit 1 if any KPI target is missed (for CI regression guard)")
+    args = parser.parse_args()
+
+    if not args.dataset:
+        parser.print_help()
         sys.exit(1)
 
-    result = evaluate(dataset_path=path, use_node=False)
+    result = evaluate(dataset_path=args.dataset, use_node=False)
     kpi = kpi_check(result)
 
     print(f"Total samples : {result.total}")
@@ -342,3 +348,11 @@ if __name__ == "__main__":
     print(f"FP Rate       : {result.fp_rate:.4f}  {'✅' if kpi['fp_rate_ok'] else '❌'} (target ≤0.05)")
     print(f"F1            : {result.f1:.4f}")
     print(f"TP={result.tp}  FP={result.fp}  TN={result.tn}  FN={result.fn}")
+
+    if args.ci and not all(kpi.values()):
+        failed = [k for k, v in kpi.items() if not v]
+        print(f"\n❌ CI FAIL — KPI targets missed: {', '.join(failed)}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.ci:
+        print("\n✅ All KPI targets met")

@@ -4,12 +4,17 @@
   "description": "Browser-layer prompt injection detection for LLM APIs",
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.js",
+    "build:prod": "node scripts/build.js --prod",
+    "build:watch": "node scripts/build.js --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "ci": "npm run build && npm test"
   },
   "devDependencies": {
-    "vitest": "^1.6.0",
-    "@vitest/coverage-v8": "^1.6.0"
+    "@vitest/coverage-v8": "^1.6.0",
+    "esbuild": "^0.28.0",
+    "vitest": "^1.6.0"
   }
 }

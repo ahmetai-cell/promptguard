@@ -7,32 +7,125 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Tests (Node ${{ matrix.node-version }})
+  # ─── JS: build + unit tests ──────────────────────────────────────────────────
+  js:
+    name: JS (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["20", "22"]
+        node: ["20", "22"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Build extension
+        run: npm run build
+
+      - name: Verify bundle integrity
+        run: |
+          node --input-type=module << 'EOF'
+          import { readFileSync } from 'fs';
+          const cs = readFileSync('dist/content-script.js', 'utf8');
+          const sw = readFileSync('dist/service-worker.js', 'utf8');
+          const mf = JSON.parse(readFileSync('dist/manifest.json', 'utf8'));
+          const fail = (msg) => { console.error('FAIL:', msg); process.exit(1); };
+          if (/^import\s/m.test(cs)) fail('content-script has bare imports');
+          if (/^import\s/m.test(sw)) fail('service-worker has bare imports');
+          if ('type' in (mf.background ?? {})) fail('manifest background still has "type"');
+          if (!cs.includes('analyzeText')) fail('analyzeText not bundled');
+          if (!cs.includes('extractMessages')) fail('extractMessages not bundled');
+          console.log('Bundle integrity ✅');
+          EOF
+
+      - name: Run unit tests
         run: npm test
 
       - name: Upload coverage
-        if: matrix.node-version == '20'
+        if: matrix.node == '20'
         uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: coverage/
+
+  # ─── Python: proxy unit tests ────────────────────────────────────────────────
+  proxy:
+    name: Proxy (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+
+    defaults:
+      run:
+        working-directory: proxy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install fastapi pydantic httpx pytest pytest-asyncio
+
+      - name: Run proxy tests
+        run: pytest tests/ -v
+
+  # ─── KPI regression guard ────────────────────────────────────────────────────
+  kpi:
+    name: KPI Regression Guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install agent dependencies
+        run: pip install -r agent/requirements.txt
+
+      - name: Run KPI check
+        run: python agent/evaluator.py data/prompt_injections.jsonl --ci
+
+  # ─── Pattern sync check ──────────────────────────────────────────────────────
+  pattern-sync:
+    name: Pattern Count Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check JS ↔ Python pattern parity
+        run: |
+          node --input-type=module << 'EOF'
+          import { PATTERNS } from './extension/detector/patterns.js';
+          const jsCount = PATTERNS.length;
+          console.log(`JS patterns: ${jsCount}`);
+          if (jsCount < 111) {
+            console.error(`Expected ≥111 patterns, got ${jsCount}`);
+            process.exit(1);
+          }
+          console.log('Pattern count ✅');
+          EOF
