@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PromptGuard — Privacy Policy</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px; line-height: 1.65; color: #1a1a2e;
+      background: #f8f9fc; padding: 0 16px;
+    }
+    .page { max-width: 740px; margin: 48px auto 80px; }
+    header { margin-bottom: 40px; }
+    header h1 { font-size: 26px; font-weight: 700; color: #12122a; }
+    header .sub { font-size: 13px; color: #6b7280; margin-top: 6px; }
+    h2 { font-size: 17px; font-weight: 650; color: #12122a; margin: 32px 0 12px; }
+    p  { margin-bottom: 12px; }
+    ul { margin: 8px 0 12px 20px; }
+    li { margin-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 14px; }
+    th, td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; }
+    code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+    a { color: #4f46e5; }
+    .shield { display: inline-block; width: 36px; height: 36px; background: linear-gradient(135deg,#6366f1,#8b5cf6);
+              border-radius: 8px; text-align: center; line-height: 36px; font-size: 20px;
+              margin-bottom: 12px; }
+    footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #e2e8f0;
+             font-size: 13px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="shield">🛡</div>
+    <h1>PromptGuard Privacy Policy</h1>
+    <div class="sub">Last updated: 2026-05-14</div>
+  </header>
+
+  <h2>Overview</h2>
+  <p>PromptGuard is a browser extension that protects you from <strong>prompt injection attacks</strong> — attempts by malicious web content to hijack your conversations with AI assistants. This policy explains what data is collected, why, and how it is handled.</p>
+
+  <h2>What Data Is Collected</h2>
+  <p>When PromptGuard detects a suspicious prompt, it may collect and transmit:</p>
+  <table>
+    <tr><th>Field</th><th>Description</th><th>When</th></tr>
+    <tr><td><code>ts</code></td><td>Unix timestamp of the event</td><td>Every flagged request</td></tr>
+    <tr><td><code>url</code></td><td>LLM API endpoint URL (e.g. <code>api.openai.com/…</code>)</td><td>Every flagged request</td></tr>
+    <tr><td><code>verdict</code></td><td>WARN or BLOCK</td><td>Every flagged request</td></tr>
+    <tr><td><code>score</code></td><td>Numerical risk score (0–1)</td><td>Every flagged request</td></tr>
+    <tr><td><code>matches</code></td><td>Pattern IDs that triggered (e.g. <code>P001:override</code>)</td><td>Every flagged request</td></tr>
+    <tr><td><code>prompt</code></td><td>Prompt text, truncated to 2 000 chars</td><td>WARN events only (for L2 analysis)</td></tr>
+    <tr><td><code>ua</code></td><td>Browser user-agent (first 120 chars)</td><td>L2 analysis requests only</td></tr>
+  </table>
+  <p><strong>PromptGuard does NOT collect:</strong></p>
+  <ul>
+    <li>Your name, email, or any account information</li>
+    <li>Browsing history unrelated to LLM API calls</li>
+    <li>Contents of LLM API responses</li>
+    <li>Data from non-LLM websites</li>
+  </ul>
+
+  <h2>Where Data Goes</h2>
+  <p>Flagged events are sent to the <strong>PromptGuard L2 proxy</strong>, hosted on <a href="https://railway.app" target="_blank">Railway</a>, at <code>https://promptguard-l2-production.up.railway.app</code>. The proxy:</p>
+  <ul>
+    <li>Runs a semantic ML classifier to confirm genuine injection attempts</li>
+    <li>Returns a final verdict within 400 ms</li>
+    <li>Writes an audit log entry for security analysis</li>
+  </ul>
+  <p>Data is <strong>never</strong> sold to third parties, used for advertising, or shared with LLM providers.</p>
+
+  <h2>Data Retention</h2>
+  <ul>
+    <li>Audit log entries are retained for up to <strong>90 days</strong>.</li>
+    <li>Session statistics are stored locally in <code>chrome.storage.local</code> and cleared when you clear extension data.</li>
+  </ul>
+
+  <h2>Local Storage</h2>
+  <ul>
+    <li><strong>Recent events</strong> (<code>chrome.storage.local</code>): last 50 events for the popup. Clear any time via the popup's "Clear" button.</li>
+    <li><strong>Override flag</strong> (<code>sessionStorage</code>): single-use flag set by "Send anyway". Cleared after one use or when the tab closes.</li>
+  </ul>
+
+  <h2>Your Rights</h2>
+  <ul>
+    <li><strong>Disable L2 analysis</strong>: use the extension without a proxy token for fully local, L1-only detection.</li>
+    <li><strong>Clear all local data</strong>: Chrome → Extensions → PromptGuard → Clear storage.</li>
+    <li><strong>Uninstall</strong> at any time to stop all data collection.</li>
+  </ul>
+
+  <h2>Open Source</h2>
+  <p>PromptGuard is fully open source under the MIT License. You can inspect, audit, or self-host every component at <a href="https://github.com/ahmetai-cell/prompt-guard" target="_blank">github.com/ahmetai-cell/prompt-guard</a>.</p>
+
+  <h2>Contact</h2>
+  <p>Privacy concerns or data deletion requests:<br>
+  GitHub Issues: <a href="https://github.com/ahmetai-cell/prompt-guard/issues" target="_blank">github.com/ahmetai-cell/prompt-guard/issues</a></p>
+
+  <footer>
+    PromptGuard &mdash; Browser LLM Firewall &mdash;
+    <a href="https://github.com/ahmetai-cell/prompt-guard">Open Source (MIT)</a>
+  </footer>
+</div>
+</body>
+</html>

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ci": "npm run build && npm test"
+    "ci": "npm run build && npm test",
+    "package": "npm run build:prod && node scripts/package.js"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.0",

@@ -2,18 +2,16 @@
   "manifest_version": 3,
   "name": "PromptGuard",
   "version": "0.1.0",
-  "description": "Detects and blocks prompt injection attacks before they reach the LLM API.",
+  "description": "Real-time firewall that detects and blocks prompt injection attacks before they reach OpenAI, Anthropic, or any LLM API.",
   "permissions": [
     "storage",
-    "notifications",
-    "scripting"
+    "notifications"
   ],
   "host_permissions": [
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
     "https://bedrock-runtime.*.amazonaws.com/*",
-    "https://*/*",
-    "http://*/*"
+    "https://*/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
