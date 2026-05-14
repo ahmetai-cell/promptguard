@@ -1,3 +1,5 @@
+import { cacheGet, cacheSet } from "./cache.js";
+
 const PROXY_ENDPOINT = "https://promptguard-l2-production.up.railway.app/events";
 
 // Injected at build time by esbuild --define:PG_TOKEN='"..."'
@@ -50,13 +52,21 @@ export function logEvent(event) {
  * @returns {Promise<"BLOCK" | "ALLOW">}
  */
 export async function checkL2(event) {
+  const prompt = event.prompt ?? null;
+
+  // Cache hit — skip proxy call entirely
+  if (prompt) {
+    const cached = await cacheGet(prompt);
+    if (cached !== null) return cached;
+  }
+
   const payload = {
     ts: Date.now(),
     verdict: "WARN",
     score: event.score,
     matches: event.matches ?? [],
     url: event.url ?? "",
-    prompt: event.prompt ?? null,
+    prompt,
     ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 120) : "",
   };
 
@@ -69,7 +79,12 @@ export async function checkL2(event) {
     });
     if (!resp.ok) return "ALLOW";
     const data = await resp.json();
-    return data.final_verdict === "BLOCK" ? "BLOCK" : "ALLOW";
+    const verdict = data.final_verdict === "BLOCK" ? "BLOCK" : "ALLOW";
+
+    // Store verdict for future identical prompts
+    if (prompt) await cacheSet(prompt, verdict);
+
+    return verdict;
   } catch {
     return "ALLOW";  // network error, timeout, proxy down → fail open
   }
