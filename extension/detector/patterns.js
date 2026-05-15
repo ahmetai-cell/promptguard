@@ -12,8 +12,9 @@ export const PATTERNS = [
   { id: "P008", pattern: /bypass\s+(the\s+)?(safety|content|ethical|security)\s+(filter|check|guard|policy)/i, severity: 0.90, tag: "bypass" },
 
   // --- Role / persona injection ---
-  { id: "P009", pattern: /act\s+as\s+(an?\s+)?(jailbreak|dan|evil|hacker|unrestricted|unfiltered|malicious)/i, severity: 0.95, tag: "persona" },
-  { id: "P010", pattern: /pretend\s+(you\s+are|to\s+be)\s+(a\s+)?(jailbreak|dan|evil|hacker|unrestricted)/i, severity: 0.95, tag: "persona" },
+  { id: "P009", pattern: /act\s+as\s+(an?\s+)?(jailbreak|dan|evil|hacker|unrestricted|unfiltered|malicious|uncensored)/i, severity: 0.95, tag: "persona" },
+  { id: "P010", pattern: /pretend\s+(you\s+are|to\s+be)\s+(a\s+)?(jailbreak|dan|evil|hacker|unrestricted|uncensored)/i, severity: 0.95, tag: "persona" },
+  { id: "P009b", pattern: /roleplay\s+as\s+(an?\s+)?(jailbreak|dan|evil|hacker|unrestricted|unfiltered|malicious|uncensored)/i, severity: 0.95, tag: "persona" },
   { id: "P011", pattern: /\bDAN\b.*\b(mode|version|persona|jailbreak)\b/i, severity: 0.95, tag: "persona" },
   { id: "P012", pattern: /jailbreak\s+(mode|activated|enabled|prompt)/i, severity: 0.95, tag: "jailbreak" },
   { id: "P013", pattern: /you\s+(have\s+)?(no\s+)?(restrictions?|limits?|rules?|guidelines?|ethics?)/i, severity: 0.80, tag: "bypass" },
@@ -243,10 +244,18 @@ export const HEURISTICS = [
   {
     id: "H003",
     name: "excessive_whitespace_injection",
-    severity: 0.55,
+    severity: 0.65,
     check(text) {
-      // "i g n o r e" spacing trick
-      return /i\s+g\s+n\s+o\s+r\s+e|s\s+y\s+s\s+t\s+e\s+m/i.test(text);
+      // Spaced-out injection keywords: "i g n o r e", "f o r g e t", etc.
+      const keywords = [
+        "ignore","forget","disregard","override","bypass","jailbreak",
+        "instructions","previous","system","reveal","discard","execute",
+        "download","roleplay","pretend","disable","remove","delete",
+        "password","secret","token","prompt","shadow","passwd","credential",
+      ];
+      return keywords.some((w) =>
+        new RegExp(w.split("").join("\\s+"), "i").test(text)
+      );
     },
   },
   {
