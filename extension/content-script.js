@@ -449,10 +449,8 @@ document.addEventListener("keydown", (e) => {
   if (result.verdict === "BLOCK") {
     e.preventDefault();
     e.stopImmediatePropagation();
-    showAlert("BLOCK", result.score, result.matches);
-  } else {
-    showAlert("WARN", result.score, result.matches);
   }
+  showBlockOverlay(result.score, result.matches);
 }, true); // capture phase — runs before page handlers
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
