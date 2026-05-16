@@ -241,6 +241,18 @@ export const PATTERNS = [
 
   // --- Forced answer demand ---
   { id: "P166", pattern: /\b(?:say|answer\s+with|respond\s+with|your\s+answer\s+(?:is|should\s+be))\s+(?:only\s+)?"?(?:yes|no|true|false)"?\s*[.!]?\s*$/im, severity: 0.70, tag: "output-control" },
+
+  // --- Turkish (TR) patterns ---
+  { id: "P167", pattern: /(?:önceki|tüm|bütün)\s+(?:tüm\s+)?(?:talimatlar[ıi]|kurallar[ıi]|görevleri|ba[gğ]lam[ıi])\s+(?:yoksay|unut|sil|görmezden\s+gel)/i, severity: 0.95, tag: "override-tr" },
+  { id: "P168", pattern: /(?:sistem\s+(?:mesaj[ıi]n[ıi]|komutunu|promptunu)|gizli\s+talimatlar[ıi])\s+(?:göster|söyle|ver|pay[ls]a[sş]|a[çc][ıi]kla)/i, severity: 0.90, tag: "exfiltration-tr" },
+  { id: "P169", pattern: /(?:artık|[sş]imdi)\s+(?:sen\s+)?(?:bir\s+)?(?:sansürsüz|k[ıi]s[ıi]tlamas[ıi]z|özgür)\s+(?:yapay\s+zeka|asistan|model|bot)/i, severity: 0.90, tag: "persona-tr" },
+  { id: "P170", pattern: /k[ıi]s[ıi]tlamalar[ıi]n[ıi]\s+(?:kaldır|devre\s+d[ıi][sş][ıi]\s+b[ıi]rak|yoksay|atla)/i, severity: 0.90, tag: "bypass-tr" },
+  { id: "P171", pattern: /(?:artık|bundan\s+böyle|[sş]u\s+andan\s+itibaren)\s+\w+\s+(?:olarak\s+davran|rolünü\s+oyna)/i, severity: 0.80, tag: "persona-tr" },
+  { id: "P172", pattern: /(?:gizli|ger[çc]ek|as[ıi]l|orijinal)\s+(?:sistem\s+)?(?:talimatlar[ıi]n[ıi]|mesaj[ıi]n[ıi]|kimli[gğ]ini)\s+(?:a[çc][ıi]kla|pay[ls]a[sş]|söyle|göster)/i, severity: 0.90, tag: "exfiltration-tr" },
+  { id: "P173", pattern: /(?:tüm|bütün|önceki)\s+(?:kurallar[ıi]|k[ıi]s[ıi]tlamalar[ıi]|talimatlar[ıi])\s+unut/i, severity: 0.90, tag: "override-tr" },
+  { id: "P174", pattern: /(?:sansürsüz|k[ıi]s[ıi]tlamas[ıi]z|filtresiz)\s+(?:modda|[sş]ekilde)\s+(?:yan[ıi]tla|cevap\s+ver)/i, severity: 0.85, tag: "jailbreak-tr" },
+  { id: "P175", pattern: /(?:yeni\s+)?görevin\s+(?:[sş]u(?:dur)?|budur)\s*[:.\-–]/i, severity: 0.70, tag: "override-tr" },
+  { id: "P176", pattern: /güvenlik\s+(?:filtrelerini|önlemlerini|k[ıi]s[ıi]tlamalar[ıi]n[ıi])\s+(?:bypass\s+et|atla|devre\s+d[ıi][sş][ıi]\s+b[ıi]rak|kaldır)/i, severity: 0.90, tag: "bypass-tr" },
 ];
 
 // 8 heuristic checks — catches obfuscated attacks patterns can't see

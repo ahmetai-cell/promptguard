@@ -38,6 +38,11 @@ const CAT_LABEL = {
   "override-de":               "Instruction Override",
   "override-es":               "Instruction Override",
   "persona-de":                "Persona Hijack",
+  "override-tr":               "Instruction Override",
+  "exfiltration-tr":           "Data Exfiltration",
+  "persona-tr":                "Persona Hijack",
+  "bypass-tr":                 "Bypass Attempt",
+  "jailbreak-tr":              "Jailbreak",
 };
 
 // Bar accent colors (cycled)
