@@ -13,6 +13,8 @@ import { analyzeMessages } from "./detector/index.js";
 const LLM_URL_PATTERNS = [
   "openai.com/v1/chat/completions",
   "anthropic.com/v1/messages",
+  "chatgpt.com/backend-api/conversation",
+  "claude.ai/api/organizations",
   "bedrock-runtime",
   "/api/chat",
   "/v1/completions",
@@ -23,13 +25,16 @@ const _OVERRIDE_KEY = "_pg_override";
 // ─── Enabled state ─────────────────────────────────────────────────────────────
 
 let _pgEnabled = true;
-chrome.runtime.sendMessage({ type: "GET_ENABLED" }, (r) => {
-  if (chrome.runtime.lastError) return;
-  if (r) _pgEnabled = r.enabled;
-});
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "PG_ENABLED") _pgEnabled = msg.enabled;
-});
+const _rt = (typeof chrome !== "undefined") && chrome.runtime;
+if (_rt) {
+  _rt.sendMessage({ type: "GET_ENABLED" }, (r) => {
+    if (chrome.runtime.lastError) return;
+    if (r) _pgEnabled = r.enabled;
+  });
+  _rt.onMessage.addListener((msg) => {
+    if (msg.type === "PG_ENABLED") _pgEnabled = msg.enabled;
+  });
+}
 
 function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
@@ -137,7 +142,8 @@ function showBlockOverlay(score, matches) {
 
 async function queryL2(prompt, score, matches, url) {
   try {
-    const l2Promise = chrome.runtime.sendMessage({
+    if (!_rt) return null;
+    const l2Promise = _rt.sendMessage({
       type: "L2_CHECK", prompt, score, matches, url,
     });
     const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 400));
@@ -415,8 +421,8 @@ window.WebSocket.prototype = _WS.prototype;
 window.addEventListener("message", (e) => {
   if (e.source !== window || e.data?.source !== "promptguard") return;
   const { type, verdict, score, matches, url, prompt } = e.data;
-  if (type === "VERDICT") {
-    chrome.runtime.sendMessage({ type: "VERDICT", verdict, score, matches, url, prompt });
+  if (type === "VERDICT" && _rt) {
+    _rt.sendMessage({ type: "VERDICT", verdict, score, matches, url, prompt });
   }
 });
 
