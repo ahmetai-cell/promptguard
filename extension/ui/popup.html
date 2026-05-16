@@ -2,187 +2,362 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PromptGuard</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      width: 320px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 13px;
-      background: #0f1117;
-      color: #e2e8f0;
+    :root {
+      --bg:       #0a0e1a;
+      --card:     #111827;
+      --border:   #1f2937;
+      --border2:  #253046;
+      --accent:   #7c3aed;
+      --accent2:  #6d28d9;
+      --red:      #ef4444;
+      --orange:   #f97316;
+      --green:    #22c55e;
+      --blue:     #3b82f6;
+      --sky:      #38bdf8;
+      --txt1:     #f1f5f9;
+      --txt2:     #94a3b8;
+      --txt3:     #475569;
+      --block-bg: rgba(239,68,68,0.12);
+      --warn-bg:  rgba(249,115,22,0.12);
     }
 
+    body {
+      width: 380px;
+      background: var(--bg);
+      color: var(--txt1);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
     header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 14px 16px;
-      border-bottom: 1px solid #1e2530;
+      gap: 10px;
+      padding: 13px 16px 12px;
+      border-bottom: 1px solid var(--border);
     }
 
-    header .logo {
-      width: 28px;
-      height: 28px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .logo {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
       font-size: 16px;
+      flex-shrink: 0;
+      box-shadow: 0 0 12px rgba(124,58,237,0.4);
     }
 
-    header h1 { font-size: 15px; font-weight: 600; color: #f1f5f9; }
-    header span { font-size: 11px; color: #64748b; margin-left: auto; }
+    .brand { flex: 1; }
+    .brand h1 { font-size: 15px; font-weight: 700; color: var(--txt1); letter-spacing: -0.01em; }
+    .brand span { font-size: 10px; color: var(--txt3); }
 
+    /* Toggle switch */
+    .toggle-wrap { display: flex; align-items: center; gap: 7px; }
+    .toggle-label { font-size: 11px; color: var(--txt2); }
+    .toggle {
+      position: relative; width: 36px; height: 20px;
+      cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .slider {
+      position: absolute; inset: 0;
+      background: var(--txt3);
+      border-radius: 20px;
+      transition: background 0.2s;
+    }
+    .slider::after {
+      content: "";
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider { background: var(--accent); }
+    .toggle input:checked + .slider::after { transform: translateX(16px); }
+
+    /* ── Stats row ───────────────────────────────────────────────────────── */
     .stats {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 1px;
-      background: #1e2530;
-      border-bottom: 1px solid #1e2530;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
     }
-
     .stat {
-      background: #0f1117;
-      padding: 14px 0;
+      background: var(--bg);
+      padding: 16px 0 12px;
       text-align: center;
     }
-
-    .stat .value {
-      font-size: 24px;
-      font-weight: 700;
+    .stat .val {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
       line-height: 1;
     }
-
-    .stat .label {
-      font-size: 10px;
-      color: #64748b;
+    .stat .lbl {
+      font-size: 9px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
+      color: var(--txt3);
       margin-top: 4px;
     }
+    .stat.bl .val { color: var(--red); }
+    .stat.wa .val { color: var(--orange); }
+    .stat.sc .val { color: var(--sky); }
 
-    .stat.blocked .value { color: #fc8181; }
-    .stat.warned  .value { color: #f6ad55; }
-    .stat.allowed .value { color: #68d391; }
-
-    .section-title {
-      padding: 10px 16px 6px;
-      font-size: 10px;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    #event-list {
-      max-height: 220px;
-      overflow-y: auto;
-    }
-
-    .event-item {
+    /* ── Section header ──────────────────────────────────────────────────── */
+    .section-hd {
       display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 8px 16px;
-      border-bottom: 1px solid #1a1f2a;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 16px 7px;
     }
-
-    .event-item:last-child { border-bottom: none; }
-
-    .badge {
+    .section-hd span {
       font-size: 10px;
-      font-weight: 600;
-      padding: 2px 6px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--txt3);
+    }
+    .period-toggle {
+      display: flex;
+      gap: 4px;
+    }
+    .period-btn {
+      font-size: 10px;
+      padding: 2px 7px;
       border-radius: 4px;
-      flex-shrink: 0;
-      margin-top: 1px;
+      border: 1px solid var(--border2);
+      background: transparent;
+      color: var(--txt3);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .period-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
     }
 
-    .badge.BLOCK { background: #742a2a; color: #fc8181; }
-    .badge.WARN  { background: #7b341e; color: #f6ad55; }
-    .badge.ALLOW { background: #1c4532; color: #68d391; }
-
-    .event-detail { flex: 1; min-width: 0; }
-    .event-url {
+    /* ── Category bars ───────────────────────────────────────────────────── */
+    .categories {
+      padding: 0 16px 12px;
+    }
+    .cat-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+    .cat-name {
       font-size: 11px;
-      color: #94a3b8;
+      color: var(--txt2);
+      width: 130px;
+      flex-shrink: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .event-matches { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .bar-track {
+      flex: 1;
+      height: 5px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .cat-count {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--txt2);
+      width: 24px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .no-data {
+      padding: 10px 16px;
+      font-size: 12px;
+      color: var(--txt3);
+      text-align: center;
+    }
+
+    /* ── 7-day chart ─────────────────────────────────────────────────────── */
+    .chart-wrap {
+      padding: 0 16px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    #chart-svg {
+      display: block;
+      width: 100%;
+      overflow: visible;
+    }
+
+    /* ── Events list ─────────────────────────────────────────────────────── */
+    #event-list {
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    #event-list::-webkit-scrollbar { width: 4px; }
+    #event-list::-webkit-scrollbar-track { background: transparent; }
+    #event-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .ev {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 7px 16px;
+      border-bottom: 1px solid #151e2e;
+      transition: background 0.1s;
+    }
+    .ev:last-child { border-bottom: none; }
+    .ev:hover { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      letter-spacing: 0.04em;
+    }
+    .badge.BLOCK { background: var(--block-bg); color: var(--red); }
+    .badge.WARN  { background: var(--warn-bg);  color: var(--orange); }
+
+    .ev-body { flex: 1; min-width: 0; }
+    .ev-url {
+      font-size: 11px;
+      color: var(--txt2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ev-tags {
+      font-size: 10px;
+      color: var(--txt3);
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ev-age {
+      font-size: 10px;
+      color: var(--txt3);
+      flex-shrink: 0;
+    }
 
     .empty {
-      padding: 24px 16px;
+      padding: 20px 16px;
       text-align: center;
-      color: #4a5568;
+      color: var(--txt3);
       font-size: 12px;
     }
 
+    /* ── Footer ──────────────────────────────────────────────────────────── */
     footer {
-      padding: 10px 16px;
-      border-top: 1px solid #1e2530;
+      padding: 9px 16px;
+      border-top: 1px solid var(--border);
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
     }
-
-    .status-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: #48bb78;
-      display: inline-block;
-      margin-right: 5px;
-    }
-
-    .status-text { font-size: 11px; color: #68d391; }
+    .ver { font-size: 10px; color: var(--txt3); }
     .clear-btn {
-      font-size: 11px;
-      color: #64748b;
+      font-size: 10px;
+      color: var(--txt3);
       background: none;
-      border: none;
-      cursor: pointer;
-      padding: 2px 6px;
+      border: 1px solid var(--border2);
       border-radius: 4px;
+      padding: 3px 9px;
+      cursor: pointer;
+      transition: all 0.15s;
     }
-    .clear-btn:hover { background: #1e2530; color: #94a3b8; }
+    .clear-btn:hover { color: var(--txt2); border-color: var(--txt3); }
+
+    .sep { height: 1px; background: var(--border); }
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">🛡</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">🛡</div>
+  <div class="brand">
     <h1>PromptGuard</h1>
-    <span>L1 Active</span>
-  </header>
-
-  <div class="stats">
-    <div class="stat blocked">
-      <div class="value" id="stat-blocked">0</div>
-      <div class="label">Blocked</div>
-    </div>
-    <div class="stat warned">
-      <div class="value" id="stat-warned">0</div>
-      <div class="label">Warned</div>
-    </div>
-    <div class="stat allowed">
-      <div class="value" id="stat-allowed">0</div>
-      <div class="label">Allowed</div>
-    </div>
+    <span>AI Firewall</span>
   </div>
-
-  <div class="section-title">Recent Events</div>
-  <div id="event-list">
-    <div class="empty" id="empty-msg">No events yet this session.</div>
+  <div class="toggle-wrap">
+    <span class="toggle-label" id="toggle-lbl">Active</span>
+    <label class="toggle" title="Enable / disable scanning">
+      <input type="checkbox" id="enabled-toggle" checked />
+      <span class="slider"></span>
+    </label>
   </div>
+</header>
 
-  <footer>
-    <span><span class="status-dot"></span><span class="status-text">Monitoring active</span></span>
-    <button class="clear-btn" id="clear-btn">Clear</button>
-  </footer>
+<!-- Stats -->
+<div class="stats">
+  <div class="stat bl">
+    <div class="val" id="s-blocked">—</div>
+    <div class="lbl">Blocked</div>
+  </div>
+  <div class="stat wa">
+    <div class="val" id="s-warned">—</div>
+    <div class="lbl">Warned</div>
+  </div>
+  <div class="stat sc">
+    <div class="val" id="s-scanned">—</div>
+    <div class="lbl">Scanned</div>
+  </div>
+</div>
 
-  <script src="popup.js"></script>
+<!-- Category breakdown -->
+<div class="section-hd">
+  <span>Attack Categories</span>
+  <div class="period-toggle">
+    <button class="period-btn active" data-p="today">Today</button>
+    <button class="period-btn" data-p="all">All time</button>
+  </div>
+</div>
+<div class="categories" id="cat-list"></div>
+
+<div class="sep"></div>
+
+<!-- 7-day chart -->
+<div class="section-hd">
+  <span>Last 7 Days</span>
+</div>
+<div class="chart-wrap">
+  <svg id="chart-svg" height="60" viewBox="0 0 348 60" preserveAspectRatio="none"></svg>
+</div>
+
+<!-- Recent events -->
+<div class="section-hd" style="padding-bottom:4px">
+  <span>Recent Threats</span>
+</div>
+<div id="event-list">
+  <div class="empty" id="empty-msg">No threats detected yet.</div>
+</div>
+
+<!-- Footer -->
+<footer>
+  <span class="ver">v0.2.0 · L1 + L2</span>
+  <button class="clear-btn" id="clear-btn">Clear data</button>
+</footer>
+
+<script src="popup.js"></script>
 </body>
 </html>

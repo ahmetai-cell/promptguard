@@ -20,6 +20,17 @@ const LLM_URL_PATTERNS = [
 
 const _OVERRIDE_KEY = "_pg_override";
 
+// ─── Enabled state ─────────────────────────────────────────────────────────────
+
+let _pgEnabled = true;
+chrome.runtime.sendMessage({ type: "GET_ENABLED" }, (r) => {
+  if (chrome.runtime.lastError) return;
+  if (r) _pgEnabled = r.enabled;
+});
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "PG_ENABLED") _pgEnabled = msg.enabled;
+});
+
 function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
 }
@@ -144,6 +155,7 @@ window.fetch = async function (input, init = {}) {
   const url = typeof input === "string" ? input : input?.url ?? "";
 
   if (!isLLMRequest(url)) return _fetch(input, init);
+  if (!_pgEnabled) return _fetch(input, init);
 
   // One-shot override: user clicked "Send anyway" in the block overlay
   try {
@@ -281,7 +293,7 @@ XMLHttpRequest.prototype.open = function (method, url, ...rest) {
 XMLHttpRequest.prototype.send = function (body) {
   const url = this._pgUrl ?? "";
 
-  if (isLLMRequest(url)) {
+  if (isLLMRequest(url) && _pgEnabled) {
     try {
       if (sessionStorage.getItem(_OVERRIDE_KEY)) {
         sessionStorage.removeItem(_OVERRIDE_KEY);
@@ -346,7 +358,7 @@ const _WS = window.WebSocket;
 window.WebSocket = function PGWebSocket(url, protocols) {
   const ws = protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
 
-  if (!isLLMRequest(String(url))) return ws;
+  if (!isLLMRequest(String(url)) || !_pgEnabled) return ws;
 
   try {
     if (sessionStorage.getItem(_OVERRIDE_KEY)) {

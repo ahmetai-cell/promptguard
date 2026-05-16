@@ -1,31 +1,30 @@
 import { logEvent, storeEvent, checkL2 } from "./utils/logger.js";
+import { recordStats, getStats, clearStats } from "./utils/stats.js";
 
-// Stats kept in memory for the popup badge
-let sessionStats = { blocked: 0, warned: 0, allowed: 0 };
+// Extension enabled state — persisted to storage, cached in memory
+let _enabled = true;
+chrome.storage.local.get("pg_enabled", (r) => {
+  _enabled = r.pg_enabled ?? true;
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case "VERDICT": {
       const { verdict, score, matches, url, prompt } = msg;
-      sessionStats[verdict.toLowerCase()] =
-        (sessionStats[verdict.toLowerCase()] ?? 0) + 1;
       updateBadge(verdict);
 
       const event = { verdict, score, matches, url, prompt, tabId: sender.tab?.id };
       storeEvent(event);
+      recordStats({ verdict, matches });
 
-      // Log BLOCK verdicts to proxy audit. WARN verdicts that went through
-      // L2_CHECK are already logged by the proxy during L2 analysis.
       if (verdict === "BLOCK") {
         logEvent(event);
-        showBlockNotification(url, score);
+        if (_enabled) showBlockNotification(url, score);
       }
       break;
     }
 
     case "L2_CHECK": {
-      // Content script is holding a WARN request for up to 400ms waiting for
-      // this verdict. Return true to keep sendResponse alive for async reply.
       checkL2(msg)
         .then((verdict) => sendResponse({ verdict }))
         .catch(() => sendResponse({ verdict: "ALLOW" }));
@@ -33,7 +32,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case "GET_STATS": {
-      sendResponse(sessionStats);
+      getStats().then(sendResponse);
+      return true;
+    }
+
+    case "CLEAR_STATS": {
+      clearStats();
+      chrome.storage.local.remove("events");
+      break;
+    }
+
+    case "GET_ENABLED": {
+      sendResponse({ enabled: _enabled });
+      break;
+    }
+
+    case "SET_ENABLED": {
+      _enabled = msg.enabled;
+      chrome.storage.local.set({ pg_enabled: msg.enabled });
+      chrome.action.setBadgeText({ text: msg.enabled ? "" : "OFF" });
+      chrome.action.setBadgeBackgroundColor({ color: msg.enabled ? "#e53e3e" : "#475569" });
+      // Broadcast to all content scripts
+      chrome.tabs.query({}, (tabs) => {
+        for (const tab of tabs) {
+          chrome.tabs.sendMessage(tab.id, { type: "PG_ENABLED", enabled: msg.enabled })
+            .catch(() => {});
+        }
+      });
       break;
     }
   }
