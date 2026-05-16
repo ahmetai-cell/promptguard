@@ -15,13 +15,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       const event = { verdict, score, matches, url, prompt, tabId: sender.tab?.id };
       storeEvent(event);
-      recordStats({ verdict, matches });
+
+      // return true keeps the port open so the service worker stays alive
+      // until the async storage write in recordStats completes
+      recordStats({ verdict, matches })
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false }));
 
       if (verdict === "BLOCK") {
         logEvent(event);
         if (_enabled) showBlockNotification(url, score);
       }
-      break;
+      return true;
     }
 
     case "L2_CHECK": {

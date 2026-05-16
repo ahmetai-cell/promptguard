@@ -32,7 +32,20 @@ function _rt() {
 }
 
 function _swSend(msg) {
-  try { _rt()?.sendMessage?.(msg); } catch {}
+  try {
+    const rt = _rt();
+    if (!rt?.sendMessage) return;
+    rt.sendMessage(msg, (resp) => {
+      const err = rt.lastError;
+      if (err) console.warn("[PG] sendMessage error:", err.message, msg.type);
+    });
+  } catch (e) {
+    console.warn("[PG] sendMessage threw:", e?.message, msg.type);
+  }
+}
+
+function postVerdict(verdict, score, matches, url, prompt = null) {
+  _swSend({ type: "VERDICT", verdict, score, matches, url, prompt });
 }
 
 _swSend({ type: "GET_ENABLED" });
@@ -46,9 +59,6 @@ function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
 }
 
-function postVerdict(verdict, score, matches, url, prompt = null) {
-  _swSend({ type: "VERDICT", verdict, score, matches, url, prompt });
-}
 
 function extractPromptText(messages) {
   return messages
