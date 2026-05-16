@@ -25,16 +25,22 @@ const _OVERRIDE_KEY = "_pg_override";
 // ─── Enabled state ─────────────────────────────────────────────────────────────
 
 let _pgEnabled = true;
-const _rt = (typeof chrome !== "undefined") && chrome.runtime;
-if (_rt) {
-  _rt.sendMessage({ type: "GET_ENABLED" }, (r) => {
-    if (_rt?.lastError) return;
-    if (r) _pgEnabled = r.enabled;
-  });
-  _rt.onMessage.addListener((msg) => {
+
+function _rt() {
+  try { return (typeof chrome !== "undefined") && chrome?.runtime || null; }
+  catch { return null; }
+}
+
+function _swSend(msg) {
+  try { _rt()?.sendMessage?.(msg); } catch {}
+}
+
+_swSend({ type: "GET_ENABLED" });
+try {
+  _rt()?.onMessage?.addListener?.((msg) => {
     if (msg.type === "PG_ENABLED") _pgEnabled = msg.enabled;
   });
-}
+} catch {}
 
 function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
@@ -142,8 +148,8 @@ function showBlockOverlay(score, matches) {
 
 async function queryL2(prompt, score, matches, url) {
   try {
-    if (!_rt) return null;
-    const l2Promise = _rt.sendMessage({
+    if (!_rt()) return null;
+    const l2Promise = _rt().sendMessage({
       type: "L2_CHECK", prompt, score, matches, url,
     });
     const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 400));
@@ -421,8 +427,8 @@ window.WebSocket.prototype = _WS.prototype;
 window.addEventListener("message", (e) => {
   if (e.source !== window || e.data?.source !== "promptguard") return;
   const { type, verdict, score, matches, url, prompt } = e.data;
-  if (type === "VERDICT" && _rt) {
-    _rt.sendMessage({ type: "VERDICT", verdict, score, matches, url, prompt });
+  if (type === "VERDICT") {
+    _swSend({ type: "VERDICT", verdict, score, matches, url, prompt });
   }
 });
 
