@@ -261,3 +261,17 @@ async def health():
 @app.get("/stats")
 async def stats():
     return dict(_stats)
+
+
+@app.get("/stats/aggregate")
+async def stats_aggregate(request: Request):
+    if not _verify_token(request):
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    totals     = await db.get_totals()
+    daily      = await db.get_daily(days=7)
+    categories = await db.get_top_categories(days=30, limit=10)
+    return {
+        "totals":     totals,
+        "days":       daily,
+        "categories": categories,
+    }
