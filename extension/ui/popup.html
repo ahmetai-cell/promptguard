@@ -288,6 +288,32 @@
     .clear-btn:hover { color: var(--txt2); border-color: var(--txt3); }
 
     .sep { height: 1px; background: var(--border); }
+
+    /* ── Global strip ────────────────────────────────────────────────────── */
+    .global-strip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(124,58,237,0.06);
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--txt3);
+    }
+    .global-tag {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: rgba(124,58,237,0.2);
+      color: #a78bfa;
+    }
+    .global-strip .g-num {
+      font-weight: 700;
+      color: var(--txt2);
+    }
   </style>
 </head>
 <body>
@@ -322,6 +348,13 @@
     <div class="val" id="s-scanned">—</div>
     <div class="lbl">Scanned</div>
   </div>
+</div>
+
+<!-- Global stats strip (shown only when proxy responds) -->
+<div class="global-strip" id="global-strip" style="display:none">
+  <span class="global-tag">GLOBAL</span>
+  <span class="g-num" id="g-blocked">—</span> blocked &nbsp;·&nbsp;
+  <span class="g-num" id="g-total">—</span> total across all users
 </div>
 
 <!-- Category breakdown -->

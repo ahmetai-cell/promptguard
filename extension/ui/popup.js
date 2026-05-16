@@ -1,5 +1,7 @@
 // PromptGuard popup dashboard — vanilla JS (not bundled, no ES imports).
 
+const PROXY_BASE = "https://promptguard-l2-production.up.railway.app";
+
 // ─── Category display names ───────────────────────────────────────────────────
 
 const CAT_LABEL = {
@@ -282,10 +284,32 @@ $("clear-btn").addEventListener("click", async () => {
   _statsCache = null;
 });
 
+// ─── Global stats (Supabase via proxy) ───────────────────────────────────────
+
+async function fetchGlobalStats() {
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 2000);
+    const resp = await fetch(`${PROXY_BASE}/stats/aggregate`, { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const totals = data.totals ?? {};
+    const blocked = totals.blocked ?? 0;
+    const total   = totals.total   ?? 0;
+    if (total === 0) return;
+    $("g-blocked").textContent = fmt(blocked);
+    $("g-total").textContent   = fmt(total);
+    $("global-strip").style.display = "flex";
+  } catch {
+    // fail-open: proxy unreachable or timed out — hide strip silently
+  }
+}
+
 // ─── Main render ──────────────────────────────────────────────────────────────
 
 async function render() {
-  // Stats
+  // Local stats
   chrome.runtime.sendMessage({ type: "GET_STATS" }, (stats) => {
     if (chrome.runtime.lastError || !stats) return;
     $("s-blocked").textContent = fmt(stats.totals?.blocked ?? 0);
@@ -300,6 +324,9 @@ async function render() {
   // Events
   const stored = await chrome.storage.local.get("events");
   renderEvents(stored.events);
+
+  // Global stats (non-blocking)
+  fetchGlobalStats();
 }
 
 render();
