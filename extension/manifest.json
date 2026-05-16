@@ -10,7 +10,6 @@
   "host_permissions": [
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
-    "https://bedrock-runtime.*.amazonaws.com/*",
     "https://*/*"
   ],
   "background": {
