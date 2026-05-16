@@ -47,10 +47,7 @@ function isLLMRequest(url) {
 }
 
 function postVerdict(verdict, score, matches, url, prompt = null) {
-  window.postMessage(
-    { source: "promptguard", type: "VERDICT", verdict, score, matches, url, prompt },
-    "*"
-  );
+  _swSend({ type: "VERDICT", verdict, score, matches, url, prompt });
 }
 
 function extractPromptText(messages) {
@@ -422,15 +419,6 @@ window.WebSocket.prototype = _WS.prototype;
   window.WebSocket[k] = _WS[k];
 });
 
-// ─── Verdict listener — relay to service worker ───────────────────────────────
-
-window.addEventListener("message", (e) => {
-  if (e.source !== window || e.data?.source !== "promptguard") return;
-  const { type, verdict, score, matches, url, prompt } = e.data;
-  if (type === "VERDICT") {
-    _swSend({ type: "VERDICT", verdict, score, matches, url, prompt });
-  }
-});
 
 // ─── DOM input monitoring — catches sites using service workers (ChatGPT, Claude.ai) ──
 
