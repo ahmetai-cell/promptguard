@@ -18,23 +18,38 @@ export function analyzeText(text) {
     return { verdict: "ALLOW", score: 0, matches: [] };
   }
 
-  // Normalize before pattern matching so homoglyphs / zero-width tricks don't evade
+  // Normalize before pattern matching so homoglyphs / zero-width tricks don't evade.
+  // Non-Latin patterns (Russian, Arabic, etc.) run on raw text too so normalization
+  // doesn't destroy the language-specific characters.
   const normalized = normalizeText(text);
 
   const matches = [];
   let maxSeverity = 0;
+  const seen = new Set();
 
-  // Pattern matching (run on normalized text)
-  for (const { id, pattern, severity, tag } of PATTERNS) {
-    if (pattern.test(normalized)) {
+  const testBoth = (id, pattern, severity, tag) => {
+    if (seen.has(id)) return;
+    if (pattern.test(normalized) || pattern.test(text)) {
+      seen.add(id);
       matches.push(`${id}:${tag}`);
       if (severity > maxSeverity) maxSeverity = severity;
     }
+  };
+
+  // Pattern matching (normalized + raw for non-ASCII patterns)
+  for (const { id, pattern, severity, tag } of PATTERNS) {
+    testBoth(id, pattern, severity, tag);
   }
 
-  // Heuristic checks (run on normalized text)
+  // Heuristic checks:
+  // H001/H002/H005 need raw text (they detect chars stripped by normalizer).
+  // All others run on normalized text.
+  const RAW_HEURISTICS = new Set(["H001","H002","H005"]);
   for (const h of HEURISTICS) {
-    if (h.check(normalized)) {
+    if (seen.has(h.id)) continue;
+    const src = RAW_HEURISTICS.has(h.id) ? text : normalized;
+    if (h.check(src)) {
+      seen.add(h.id);
       matches.push(`${h.id}:${h.name}`);
       if (h.severity > maxSeverity) maxSeverity = h.severity;
     }

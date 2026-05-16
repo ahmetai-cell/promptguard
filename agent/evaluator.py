@@ -339,7 +339,7 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(1)
 
-    result = evaluate(dataset_path=args.dataset, use_node=False)
+    result = evaluate(dataset_path=args.dataset, use_node=True)
     kpi = kpi_check(result)
 
     print(f"Total samples : {result.total}")

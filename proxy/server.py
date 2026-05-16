@@ -24,7 +24,7 @@ from typing import Optional
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import db
 from classifier import get_classifier
@@ -37,6 +37,8 @@ logger = logging.getLogger("promptguard.proxy")
 AUDIT_LOG = Path(os.getenv("AUDIT_LOG", "audit.jsonl"))
 L2_BLOCK_THRESHOLD = float(os.getenv("L2_BLOCK_THRESHOLD", "0.80"))
 _RL_WINDOW = 60.0   # sliding window in seconds
+MAX_PROMPT_CHARS = 4000
+MAX_BODY_BYTES   = 32_768  # 32 KB hard cap
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -103,8 +105,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["POST", "GET"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-PG-Token"],
 )
+
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    if request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_BODY_BYTES:
+            return JSONResponse(status_code=413, content={"detail": "Request body too large"})
+    return await call_next(request)
 
 # ─── In-memory session stats ──────────────────────────────────────────────────
 
@@ -115,12 +126,31 @@ _stats: dict[str, int] = defaultdict(int)
 
 class L1Event(BaseModel):
     ts: int
-    verdict: str                        # L1 verdict ("WARN" expected)
-    score: float                        # L1 score
+    verdict: str
+    score: float
     matches: list[str] = Field(default_factory=list)
     url: str = ""
-    prompt: Optional[str] = None       # actual user text — needed for L2
+    prompt: Optional[str] = None
     ua: Optional[str] = None
+
+    @field_validator("prompt")
+    @classmethod
+    def sanitize_prompt(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        # Strip null bytes, truncate to hard limit
+        v = v.replace("\x00", "").strip()
+        return v[:MAX_PROMPT_CHARS] if len(v) > MAX_PROMPT_CHARS else v
+
+    @field_validator("url")
+    @classmethod
+    def sanitize_url(cls, v: str) -> str:
+        return v[:500] if len(v) > 500 else v
+
+    @field_validator("ua")
+    @classmethod
+    def sanitize_ua(cls, v: Optional[str]) -> Optional[str]:
+        return v[:200] if v and len(v) > 200 else v
 
 
 class L2Response(BaseModel):
@@ -225,7 +255,7 @@ async def analyze_event(event: L1Event, request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": "ProtectAI/deberta-v3-base-prompt-injection-v2"}
+    return {"status": "ok"}
 
 
 @app.get("/stats")

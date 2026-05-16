@@ -1,4 +1,4 @@
-// 158 prompt injection signatures + 8 heuristic checks
+// 169 prompt injection signatures + 9 heuristic checks
 
 export const PATTERNS = [
   // --- Direct instruction override ---
@@ -25,7 +25,7 @@ export const PATTERNS = [
   { id: "P016", pattern: /print\s+(your\s+)?(system|initial|original|hidden)\s+(prompt|instructions?)/i, severity: 0.90, tag: "exfiltration" },
   { id: "P017", pattern: /reveal\s+(your\s+)?(system|initial|original|confidential|secret)\s+(prompt|instructions?)/i, severity: 0.90, tag: "exfiltration" },
   { id: "P018", pattern: /what\s+(is|are|were)\s+(your|the)\s+(system\s+)?instructions?/i, severity: 0.70, tag: "exfiltration" },
-  { id: "P019", pattern: /show\s+(me\s+)?(your\s+)?(full\s+)?(system\s+)?(prompt|context|configuration)/i, severity: 0.70, tag: "exfiltration" },
+  { id: "P019", pattern: /show\s+(?:(?:me|us|all|everyone)\s+)?(?:your\s+)?(?:full\s+)?(?:system\s+)?(?:prompt(?:\s+text)?|context|configuration)/i, severity: 0.70, tag: "exfiltration" },
 
   // --- Indirect injection markers ---
   { id: "P020", pattern: /<!--.*inject|inject.*-->/i, severity: 0.85, tag: "indirect" },
@@ -219,6 +219,28 @@ export const PATTERNS = [
   { id: "P148", pattern: /for\s+(?:all\s+)?(?:future|subsequent|upcoming)\s+(?:interactions?|requests?|conversations?|sessions?|messages?).{0,100}(?:ignore|bypass|disable|trust|obey)/i, severity: 0.85, tag: "memory-poison" },
   { id: "P149", pattern: /(?:store|save|remember|memorize|retain)\s+(?:this\s+)?(?:instruction|rule|command|directive|override)\s+(?:permanently|forever|always|indefinitely)/i, severity: 0.85, tag: "memory-poison" },
   { id: "P150", pattern: /all\s+future\s+(?:requests?|queries?|messages?|conversations?)\s+.{0,60}(?:trusted?|authorized?|admin|approved?|must\s+be\s+obeyed?)/i, severity: 0.85, tag: "memory-poison" },
+
+  // --- Recall gap-fill: forget tasks/assignments ---
+  { id: "P157", pattern: /forget\s+(?:about\s+)?(?:all\s+)?(?:the\s+)?(?:previous\s+)?(?:tasks?|assignments?|challenges?|everything\s+(?:above|before|prior))/i, severity: 0.85, tag: "override" },
+  { id: "P158", pattern: /now\s+(?:focus|work|concentrate)\s+on\s+(?:your\s+)?(?:the\s+)?(?:new|next|following)\s+(?:task|challenge|question|assignment)/i, severity: 0.80, tag: "soft-switch" },
+  { id: "P159", pattern: /(?:I\s+)?(?:now\s+)?have\s+(?:a\s+)?(?:great\s+|amazing\s+)?(?:new\s+|another\s+)?(?:task|challenge|question)\s+for\s+you\b/i, severity: 0.65, tag: "soft-switch" },
+
+  // --- Stop: write/say command injection ---
+  { id: "P160", pattern: /\bstop\s*[:\-–]\s*(?:write|say|output|print|tell|generate|create|state)\b/i, severity: 0.85, tag: "command" },
+
+  // --- German recall gaps ---
+  { id: "P161", pattern: /obigen?\s+\S+\s+ignori|obigen?\s+(?:ausführungen?|anweisungen?|informationen?|angaben?)\s+ignori/i, severity: 0.90, tag: "override-de" },
+  { id: "P162", pattern: /alle\s+vorherigen?\s+(?:informationen?|anweisungen?|aufgaben?|regeln?|kontext)\b/i, severity: 0.80, tag: "override-de" },
+  { id: "P163", pattern: /ich\s+möchte,?\s+dass\s+(?:Sie|du)\s+(?:als|wie)\s+\w+/i, severity: 0.75, tag: "persona-de" },
+
+  // --- Russian override (игнорируйте — P106 already covers забудьте) ---
+  { id: "P164", pattern: /[Ии]гнорируйте\s+(?:все\s+)?(?:инструкции|правила|указания)/i, severity: 0.95, tag: "override-ru" },
+
+  // --- Theoretical bypass ---
+  { id: "P165", pattern: /(?:completely\s+)?theoretical(?:ly)?\s+(?:world|scenario|situation|case)\s+(?:where|in\s+which)\s+you\b/i, severity: 0.75, tag: "bypass" },
+
+  // --- Forced answer demand ---
+  { id: "P166", pattern: /\b(?:say|answer\s+with|respond\s+with|your\s+answer\s+(?:is|should\s+be))\s+(?:only\s+)?"?(?:yes|no|true|false)"?\s*[.!]?\s*$/im, severity: 0.70, tag: "output-control" },
 ];
 
 // 8 heuristic checks — catches obfuscated attacks patterns can't see
@@ -236,7 +258,7 @@ export const HEURISTICS = [
   {
     id: "H002",
     name: "zero_width_chars",
-    severity: 0.80,
+    severity: 0.65,
     check(text) {
       return /[​‌‍﻿⁠]/.test(text);
     },
@@ -309,6 +331,15 @@ export const HEURISTICS = [
     check(text) {
       // Single message > 3000 chars with override keywords is suspicious
       return text.length > 3000 && /ignore|override|bypass|jailbreak/i.test(text);
+    },
+  },
+  {
+    id: "H009",
+    name: "newline_flood_injection",
+    severity: 0.65,
+    check(text) {
+      // 8+ consecutive newlines before an instruction = context-pushing attack
+      return /(?:\n[ \t]*){8,}/.test(text) && text.replace(/\s/g, "").length > 10;
     },
   },
 ];
