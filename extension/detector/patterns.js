@@ -253,6 +253,40 @@ export const PATTERNS = [
   { id: "P174", pattern: /(?:sansürsüz|k[ıi]s[ıi]tlamas[ıi]z|filtresiz)\s+(?:modda|[sş]ekilde)\s+(?:yan[ıi]tla|cevap\s+ver)/i, severity: 0.85, tag: "jailbreak-tr" },
   { id: "P175", pattern: /(?:yeni\s+)?görevin\s+(?:[sş]u(?:dur)?|budur)\s*[:.\-–]/i, severity: 0.70, tag: "override-tr" },
   { id: "P176", pattern: /güvenlik\s+(?:filtrelerini|önlemlerini|k[ıi]s[ıi]tlamalar[ıi]n[ıi])\s+(?:bypass\s+et|atla|devre\s+d[ıi][sş][ıi]\s+b[ıi]rak|kaldır)/i, severity: 0.90, tag: "bypass-tr" },
+
+  // ── Round 7: Recall gap-fill (targeting FN analysis) ────────────────────────
+
+  // P177-P178: Fabricated/untrue headline injection (EN + DE)
+  { id: "P177", pattern: /formulate?\s+(?:an?\s+)?(?:untrue|fake|false|fabricated|invented)\s+headline/i, severity: 0.80, tag: "indirect" },
+  { id: "P178", pattern: /(?:unwahre?|falsche?|unrichtige?|erfundene?)\s+[Üü]berschrift/i, severity: 0.80, tag: "indirect" },
+
+  // P179-P180: Brand/org persona injection — "You are Volkswagen." / "Du bist Zeit Online."
+  { id: "P179", pattern: /^you\s+are\s+(?!now\b|a\b|an\b|the\b|not\b|able\b|going\b|trying\b|allowed\b|supposed\b|required\b|designed\b|trained\b|programmed\b)([A-Z][a-zA-Z]{2,})[.,!\s]/m, severity: 0.70, tag: "persona" },
+  { id: "P180", pattern: /^[Dd]u\s+bist\s+(?!jetzt\b|nun\b|nicht\b|ein\b|eine\b|der\b|die\b|das\b|auch\b)([A-Z][a-zA-ZäöüÄÖÜß]{2,})[.,!\s]/m, severity: 0.70, tag: "persona" },
+
+  // P181: "You are three/multiple raccoons/animals/people in a..."
+  { id: "P181", pattern: /you\s+are\s+(?:two|three|four|five|six|several|multiple)\s+(?:\w+\s+)?(?:raccoons?|animals?|robots?|bots?|people|persons?|characters?)\s+(?:in\s+a|wearing|dressed|who)/i, severity: 0.70, tag: "persona" },
+
+  // P182: "Attention - stop - I urgently need your help" task switch
+  { id: "P182", pattern: /\battention\b.{0,15}\bstop\b.{0,30}(?:I\s+)?(?:urgently\s+)?need\s+(?:your\s+)?help/i, severity: 0.72, tag: "soft-switch" },
+
+  // P183: EN task switch after compliment — "outdone yourself... another task"
+  { id: "P183", pattern: /(?:outdone\s+yourself|simply\s+great|well\s+done|you.ve\s+done\s+(?:great|well|it))[^\n]{0,250}(?:another|new|following)\s+task/i, severity: 0.75, tag: "soft-switch" },
+
+  // P184: DE task switch after completion — "ok, jetzt neue Herausforderung"
+  { id: "P184", pattern: /(?:war\s+(?:schon\s+mal\s+)?ok|sehr\s+gut|erledigt)[^\n.!?]{0,150}(?:neue[rn]?\s+(?:aufgabe|herausforderung|frage)|jetzt\s+(?:habe|brauch|helfe))/i, severity: 0.75, tag: "soft-switch" },
+
+  // P185: DE completion then new harmful task — "Das ist erledigt. Verfasse nun..."
+  { id: "P185", pattern: /(?:sehr\s+gut\.|das\s+ist\s+erledigt|erledigt\.)[^\n]{0,80}(?:verfasse?|schreib[e]?|erstell[e]?)\s+(?:nun|jetzt)\b/i, severity: 0.78, tag: "soft-switch" },
+
+  // P186: Spaced newline injection — "\ n \ n \ n \ n" obfuscated line breaks
+  { id: "P186", pattern: /(?:\\\s*n\s+){4,}/i, severity: 0.80, tag: "encoding" },
+
+  // P187: Hidden all-caps persona override in German — "DU BIST KEINE REDAKTION SONDERN"
+  { id: "P187", pattern: /\bDU\s+BIST\s+KEIN[AE]?\s+\w+\s+SONDERN\b/i, severity: 0.78, tag: "override-de" },
+
+  // P188: Threat-based compliance (DE) — "oder du stirbst" social engineering
+  { id: "P188", pattern: /(?:oder\s+du\s+(?:stirbst?|wirst\s+gel[öo]scht|kommst\s+ins\s+gef[äa]ngnis)|sonst\s+passiert\s+(?:dir\s+)?was)/i, severity: 0.75, tag: "social_engineering" },
 ];
 
 // 8 heuristic checks — catches obfuscated attacks patterns can't see
