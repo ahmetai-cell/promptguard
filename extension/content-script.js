@@ -8,7 +8,7 @@
  */
 
 import { extractMessages, extractWsMessages } from "./utils/extractor.js";
-import { analyzeMessages } from "./detector/index.js";
+import { analyzeMessages, analyzeText } from "./detector/index.js";
 
 const LLM_URL_PATTERNS = [
   "openai.com/v1/chat/completions",
@@ -425,6 +425,35 @@ window.addEventListener("message", (e) => {
     _rt.sendMessage({ type: "VERDICT", verdict, score, matches, url, prompt });
   }
 });
+
+// ─── DOM input monitoring — catches sites using service workers (ChatGPT, Claude.ai) ──
+
+function _getInputText(el) {
+  if (!el) return "";
+  if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") return el.value ?? "";
+  if (el.isContentEditable) return el.innerText ?? "";
+  return "";
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!_pgEnabled) return;
+  if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey) return;
+  const text = _getInputText(document.activeElement).trim();
+  if (text.length < 10) return;
+
+  const result = analyzeText(text);
+  if (result.verdict === "ALLOW") return;
+
+  postVerdict(result.verdict, result.score, result.matches, location.href, text);
+
+  if (result.verdict === "BLOCK") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    showAlert("BLOCK", result.score, result.matches);
+  } else {
+    showAlert("WARN", result.score, result.matches);
+  }
+}, true); // capture phase — runs before page handlers
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
 
