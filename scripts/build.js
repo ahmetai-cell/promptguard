@@ -91,9 +91,10 @@ async function build() {
 
   // ─── Copy static assets (only on initial build) ───────────────────────────
 
-  // popup.js uses only chrome.* and DOM globals — no import, no bundling needed
+  // popup.js and relay.js use only chrome.* and DOM globals — no bundling needed
   cpSync(join(SRC, "ui"),    join(DIST, "ui"),    { recursive: true });
   cpSync(join(SRC, "icons"), join(DIST, "icons"), { recursive: true });
+  cpSync(join(SRC, "relay.js"), join(DIST, "relay.js"));
 
   // ─── Generate dist/manifest.json ─────────────────────────────────────────
   // Remove "type":"module" from background — bundled SW is plain IIFE script

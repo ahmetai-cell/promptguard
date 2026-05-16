@@ -26,34 +26,20 @@ const _OVERRIDE_KEY = "_pg_override";
 
 let _pgEnabled = true;
 
-function _rt() {
-  try { return (typeof chrome !== "undefined") && chrome?.runtime || null; }
-  catch { return null; }
-}
-
+// Send a fire-and-forget message to the service worker via the ISOLATED world
+// relay (relay.js). MAIN world → DOM CustomEvent → ISOLATED world → sendMessage.
 function _swSend(msg) {
   try {
-    const rt = _rt();
-    if (!rt?.sendMessage) return;
-    rt.sendMessage(msg, (resp) => {
-      const err = rt.lastError;
-      if (err) console.warn("[PG] sendMessage error:", err.message, msg.type);
-    });
-  } catch (e) {
-    console.warn("[PG] sendMessage threw:", e?.message, msg.type);
-  }
+    document.dispatchEvent(new CustomEvent("_pg_msg", { detail: msg }));
+  } catch { /* ignore */ }
 }
 
 function postVerdict(verdict, score, matches, url, prompt = null) {
   _swSend({ type: "VERDICT", verdict, score, matches, url, prompt });
 }
 
-_swSend({ type: "GET_ENABLED" });
-try {
-  _rt()?.onMessage?.addListener?.((msg) => {
-    if (msg.type === "PG_ENABLED") _pgEnabled = msg.enabled;
-  });
-} catch {}
+// Receive PG_ENABLED broadcasts relayed from service worker via relay.js
+document.addEventListener("_pg_enabled", (e) => { _pgEnabled = e.detail; });
 
 function isLLMRequest(url) {
   return LLM_URL_PATTERNS.some((p) => url.includes(p));
@@ -155,8 +141,7 @@ function showBlockOverlay(score, matches) {
 
 async function queryL2(prompt, score, matches, url) {
   try {
-    if (!_rt()) return null;
-    const l2Promise = _rt().sendMessage({
+    const l2Promise = chrome.runtime.sendMessage({
       type: "L2_CHECK", prompt, score, matches, url,
     });
     const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 400));
