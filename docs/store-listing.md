@@ -11,9 +11,9 @@
 | **Name** | PromptGuard |
 | **Category** | Productivity → Tools |
 | **Language** | English |
-| **Privacy Policy URL** | `[https://your-domain/privacy-policy]` |
-| **Homepage URL** | `https://github.com/ahmetai-cell/prompt-guard` |
-| **Support URL** | `https://github.com/ahmetai-cell/prompt-guard/issues` |
+| **Privacy Policy URL** | `https://ahmetai-cell.github.io/promptguard/privacy-policy.html` |
+| **Homepage URL** | `https://github.com/ahmetai-cell/promptguard` |
+| **Support URL** | `https://github.com/ahmetai-cell/promptguard/issues` |
 
 ---
 
@@ -36,7 +36,7 @@ PromptGuard is a browser-layer security extension that protects your AI-powered 
 When you use AI assistants or tools built on OpenAI, Anthropic Claude, AWS Bedrock, or similar APIs, every prompt passes through PromptGuard before leaving your browser:
 
 1. L1 Pattern Engine (instant, <1ms)
-   PromptGuard checks the prompt against 111+ hand-crafted regex patterns across 9 languages (English, German, Spanish, French, Italian, Russian, Arabic, Chinese, Bosnian/Serbian). Prompts that score above 0.75 are blocked immediately. Suspicious prompts (score 0.45–0.75) proceed to L2.
+   PromptGuard checks the prompt against 169+ hand-crafted regex patterns across 9 languages (English, German, Spanish, French, Italian, Russian, Arabic, Chinese, Bosnian/Serbian). Prompts that score above 0.75 are blocked immediately. Suspicious prompts (score 0.45–0.75) proceed to L2.
 
 2. L2 Semantic Analysis (≤400ms)
    Suspicious prompts are sent to a lightweight cloud classifier (ProtectAI/deberta-v3-base-prompt-injection-v2) for semantic confirmation. If the model confirms an injection attempt, the request is blocked. If it disagrees or the analysis times out, the request is allowed — PromptGuard always fails open to avoid disrupting legitimate work.
@@ -58,9 +58,9 @@ When you use AI assistants or tools built on OpenAI, Anthropic Claude, AWS Bedro
 
 Measured on the deepset/prompt-injections dataset (546 labeled samples):
 
-  Precision:  99.4% (1 false positive in 343 legitimate prompts)
-  Recall:     75.4% (catches 153 of 203 injection attempts)
-  FP Rate:     0.3%
+  Precision:  98.8% (2 false positives in 343 legitimate prompts — both WARN, resolved by L2)
+  Recall:     79.3% (catches 161 of 203 injection attempts)
+  FP Rate:     0.6%
 
 False negatives (missed attacks) are continuously reduced by an automated weekly analysis loop that proposes new patterns via Claude AI.
 

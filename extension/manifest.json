@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PromptGuard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Real-time firewall that detects and blocks prompt injection attacks before they reach OpenAI, Anthropic, or any LLM API.",
   "permissions": [
     "storage",
