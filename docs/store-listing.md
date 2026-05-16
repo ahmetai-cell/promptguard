@@ -36,10 +36,13 @@ PromptGuard is a browser-layer security extension that protects your AI-powered 
 When you use AI assistants or tools built on OpenAI, Anthropic Claude, AWS Bedrock, or similar APIs, every prompt passes through PromptGuard before leaving your browser:
 
 1. L1 Pattern Engine (instant, <1ms)
-   PromptGuard checks the prompt against 169+ hand-crafted regex patterns across 9 languages (English, German, Spanish, French, Italian, Russian, Arabic, Chinese, Bosnian/Serbian). Prompts that score above 0.75 are blocked immediately. Suspicious prompts (score 0.45–0.75) proceed to L2.
+   PromptGuard checks the prompt against 188+ hand-crafted regex patterns across 10 languages (English, German, Spanish, French, Italian, Russian, Arabic, Chinese, Bosnian/Serbian, Turkish). Prompts that score above 0.75 are blocked immediately. Suspicious prompts (score 0.45–0.75) proceed to L2.
 
 2. L2 Semantic Analysis (≤400ms)
-   Suspicious prompts are sent to a lightweight cloud classifier (ProtectAI/deberta-v3-base-prompt-injection-v2) for semantic confirmation. If the model confirms an injection attempt, the request is blocked. If it disagrees or the analysis times out, the request is allowed — PromptGuard always fails open to avoid disrupting legitimate work.
+   Suspicious prompts are sent to a lightweight cloud classifier (ProtectAI/deberta-v3-base-prompt-injection-v2) for semantic confirmation. If the model confirms an injection attempt, the request is blocked.
+
+3. L3 GPT Fallback (uncertain cases only)
+   When L2 is uncertain, PromptGuard escalates to GPT-4o-mini for a final verdict. This ensures edge cases are caught without impacting latency for clear-cut decisions. PromptGuard always fails open — if all layers time out, the request is allowed.
 
 3. Block Overlay
    When a request is blocked, a non-intrusive overlay appears in the bottom-right corner showing the risk score and which attack patterns were detected. A one-shot "Send anyway" override lets you bypass a false positive without disabling the extension.
@@ -58,9 +61,10 @@ When you use AI assistants or tools built on OpenAI, Anthropic Claude, AWS Bedro
 
 Measured on the deepset/prompt-injections dataset (546 labeled samples):
 
-  Precision:  98.8% (2 false positives in 343 legitimate prompts — both WARN, resolved by L2)
-  Recall:     79.3% (catches 161 of 203 injection attempts)
-  FP Rate:     0.6%
+  Precision:  98.3% (3 false positives in 343 legitimate prompts)
+  Recall:     87.2% (catches 177 of 203 injection attempts)
+  F1 Score:   92.4%
+  FP Rate:     0.9%
 
 False negatives (missed attacks) are continuously reduced by an automated weekly analysis loop that proposes new patterns via Claude AI.
 
