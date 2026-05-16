@@ -28,7 +28,7 @@ let _pgEnabled = true;
 const _rt = (typeof chrome !== "undefined") && chrome.runtime;
 if (_rt) {
   _rt.sendMessage({ type: "GET_ENABLED" }, (r) => {
-    if (chrome.runtime.lastError) return;
+    if (_rt?.lastError) return;
     if (r) _pgEnabled = r.enabled;
   });
   _rt.onMessage.addListener((msg) => {
