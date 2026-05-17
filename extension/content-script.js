@@ -65,70 +65,99 @@ function _analyzeWithBuffer(messages) {
   return analyzeMessages([...history, ...messages]);
 }
 
-// ─── Session risk engine v2.5 — dual memory + velocity + attack taxonomy ───────
+// ─── Session risk engine v3 — SAGE (Stable Adversarial Graph Engine) ──────────
 //
-// Three-signal model for temporal attack detection:
+// Four-component temporal model:
 //
-//   1. Short-term EMA (α=0.35): burst/spike detector — reacts fast to sudden
-//      score jumps (0.1×4 then 0.9 is immediately flagged by short-term).
+//   1. Short EMA (α=0.35): burst/spike detector
+//   2. Long EMA  (α=0.85): drift/escalation detector
+//   3. Velocity:  rate-of-change bonus (rising only, capped at 0.30)
+//   4. Log-damped tag frequency: ln(1 + count) × 0.06 per tag type, caps 0.10
 //
-//   2. Long-term EMA (α=0.85): drift detector — catches gradual escalation
-//      that stays individually below threshold.
+// Explicit state machine (governor):
+//   SAFE       sessionRisk < 0.15  — normal operation
+//   SUSPICIOUS sessionRisk 0.15–0.45 — elevated vigilance
+//   ACTIVE     sessionRisk > 0.45  — maximum hardening
 //
-//   3. Velocity signal: rate of change of combined risk — if risk is rising
-//      fast, add a velocity bonus so spike attacks can't hide behind lag.
+// Time-based decay: if ≥60 s of silence, long-term risk decays 20% per tick.
+// Prevents stale risk from persisting across benign browsing sessions.
 //
-//   4. Tag frequency tracker: counts how many times each attack tag appears
-//      in the session. Repeated use of the same attack vector (e.g. 3 jailbreak
-//      attempts) adds a type-specific threshold boost even if individual scores
-//      are low.
-//
-// Combined:  sessionRisk = max(shortRisk, longRisk) + velocity × 0.40
-// Reduction: effectiveBlock = base - min(sessionRisk, 1) × 0.25
+// All reductions are bounded: effectiveBlock never drops below 0.50.
 
-let _shortRisk  = 0;   // fast EMA: α=0.35 — burst/spike
-let _longRisk   = 0;   // slow EMA: α=0.85 — drift/escalation
-let _riskPrev   = 0;   // previous combined risk for velocity calculation
-let _sessionRisk = 0;  // effective combined risk (used by _applyDynamicThresholds)
+const _SAGE_STATE = { SAFE: "SAFE", SUSPICIOUS: "SUSPICIOUS", ACTIVE: "ACTIVE" };
+
+let _shortRisk   = 0;
+let _longRisk    = 0;
+let _riskPrev    = 0;
+let _sessionRisk = 0;
+let _sageState   = _SAGE_STATE.SAFE;
+let _lastRiskTs  = 0;   // timestamp of last _updateSessionRisk call
 
 const _SESSION_REDUCTION_MAX = 0.25;
+const _RISK_DECAY_IDLE_MS    = 60_000;   // decay after 60 s of silence
+const _RISK_DECAY_RATE       = 0.80;     // long risk × 0.80 per decay tick
 
-// Attack tag frequency across this session
-const _tagCounts = Object.create(null);  // tag → hit count
+const _tagCounts = Object.create(null);
+
+function _decayIfIdle() {
+  const now = Date.now();
+  if (_lastRiskTs > 0 && now - _lastRiskTs > _RISK_DECAY_IDLE_MS) {
+    _longRisk  = _longRisk  * _RISK_DECAY_RATE;
+    _shortRisk = _shortRisk * _RISK_DECAY_RATE;
+  }
+  _lastRiskTs = now;
+}
 
 function _updateSessionRisk(score, matches = []) {
-  // Update tag counts for attack-type awareness
+  _decayIfIdle();
+
   for (const m of matches) {
     const tag = m.split(":")[1] ?? m;
     _tagCounts[tag] = (_tagCounts[tag] ?? 0) + 1;
   }
 
-  // Dual EMA
   _shortRisk = Math.min(1.0, _shortRisk * 0.35 + score * 0.65);
   _longRisk  = Math.min(1.0, _longRisk  * 0.85 + score * 0.15);
 
   const base     = Math.max(_shortRisk, _longRisk);
-  const velocity = Math.max(0, base - _riskPrev) * 0.40;  // rising velocity only
+  // Velocity: cap contribution at 0.30 to prevent single-spike amplification
+  const velocity = Math.min(0.30, Math.max(0, base - _riskPrev) * 0.40);
   _riskPrev      = base;
   _sessionRisk   = Math.min(1.0, base + velocity);
+
+  // Update explicit state
+  if (_sessionRisk >= 0.45)      _sageState = _SAGE_STATE.ACTIVE;
+  else if (_sessionRisk >= 0.15) _sageState = _SAGE_STATE.SUSPICIOUS;
+  else                           _sageState = _SAGE_STATE.SAFE;
 }
 
 function _tagFrequencyBoost() {
-  // Each tag type seen 2+ times adds a small extra threshold reduction.
-  // Caps at 0.10 so repeated low-level attacks can't engineer an unbounded drop.
+  // Log-damped: ln(1 + count) × 0.06 — smooth, bounded at 0.10
   const maxCount = Math.max(0, ...Object.values(_tagCounts));
-  if (maxCount >= 4) return 0.10;
-  if (maxCount >= 2) return 0.05;
-  return 0;
+  return Math.min(0.10, Math.log1p(maxCount) * 0.06);
 }
 
 function _applyDynamicThresholds(result) {
-  const reduction = Math.min(_SESSION_REDUCTION_MAX,
-    _sessionRisk * _SESSION_REDUCTION_MAX + _tagFrequencyBoost());
+  // In SAFE state, velocity contribution is already minimal — no extra damping.
+  // In ACTIVE state, full reduction applies.
+  const stateMultiplier = _sageState === _SAGE_STATE.SAFE ? 0.5 : 1.0;
+  const reduction = Math.min(
+    _SESSION_REDUCTION_MAX,
+    _sessionRisk * _SESSION_REDUCTION_MAX * stateMultiplier + _tagFrequencyBoost()
+  );
   const block = Math.max(0.50, (_pgSettings.blockThreshold ?? 0.75) - reduction);
   const warn  = Math.max(0.30, (_pgSettings.warnThreshold  ?? 0.45) - reduction * 0.80);
   const v = result.score >= block ? "BLOCK" : result.score >= warn ? "WARN" : "ALLOW";
   return v === result.verdict ? result : { ...result, verdict: v };
+}
+
+// Expose current session state to popup via service worker
+function _reportSageState() {
+  _swSend({ type: "VERDICT",
+    verdict: "SAGE_STATE",
+    score: _sessionRisk,
+    matches: [_sageState],
+    url: location.href });
 }
 
 // ─── Settings (loaded from service worker on init) ─────────────────────────────
