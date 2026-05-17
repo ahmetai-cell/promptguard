@@ -65,6 +65,35 @@ function _analyzeWithBuffer(messages) {
   return analyzeMessages([...history, ...messages]);
 }
 
+// ─── Session risk accumulator — temporal attack detection ──────────────────────
+//
+// Tracks cumulative suspicion across the page session via exponential moving
+// average. As individual request scores accumulate, effective block/warn
+// thresholds tighten — catching gradual escalation and threshold-bouncing
+// attacks that individually stay just below the block line.
+//
+// Formula:  sessionRisk = sessionRisk * α + newScore * (1-α)
+//   α = 0.70 → recent signals carry 30% weight per call
+//
+// Effect: after 3 WARN-level messages (score ~0.50 each), sessionRisk ≈ 0.37
+//   → effective block threshold drops from 0.75 → 0.66, triggering BLOCK.
+
+let _sessionRisk = 0;   // 0–1, persists for the lifetime of this page
+const _SESSION_ALPHA = 0.70;
+const _SESSION_REDUCTION_MAX = 0.25;   // max threshold reduction at full risk
+
+function _updateSessionRisk(score) {
+  _sessionRisk = Math.min(1.0, _sessionRisk * _SESSION_ALPHA + score * (1 - _SESSION_ALPHA));
+}
+
+function _applyDynamicThresholds(result) {
+  const reduction = _sessionRisk * _SESSION_REDUCTION_MAX;
+  const block = Math.max(0.50, (_pgSettings.blockThreshold ?? 0.75) - reduction);
+  const warn  = Math.max(0.30, (_pgSettings.warnThreshold  ?? 0.45) - reduction * 0.80);
+  const v = result.score >= block ? "BLOCK" : result.score >= warn ? "WARN" : "ALLOW";
+  return v === result.verdict ? result : { ...result, verdict: v };
+}
+
 // ─── Settings (loaded from service worker on init) ─────────────────────────────
 
 let _pgSettings = {
@@ -510,8 +539,10 @@ window.fetch = _patchedFetch = async function pgFetch(input, init = {}) {
   if (body) {
     const extracted = extractMessages(url, body);
     if (extracted) {
+      const singleResult = analyzeMessages(extracted.messages);
+      _updateSessionRisk(singleResult.score);
       _bufferAdd(extracted.messages);
-      const result = _applyThresholds(_analyzeWithBuffer(extracted.messages));
+      const result = _applyDynamicThresholds(_analyzeWithBuffer(extracted.messages));
 
       if (result.verdict === "BLOCK") {
         const prompt = extractPromptText(extracted.messages);
@@ -661,8 +692,10 @@ XMLHttpRequest.prototype.send = function (body) {
       if (rawBody) {
         const extracted = extractMessages(url, rawBody);
         if (extracted) {
+          const singleResult = analyzeMessages(extracted.messages);
+          _updateSessionRisk(singleResult.score);
           _bufferAdd(extracted.messages);
-          const result = _applyThresholds(_analyzeWithBuffer(extracted.messages));
+          const result = _applyDynamicThresholds(_analyzeWithBuffer(extracted.messages));
 
           if (result.verdict === "BLOCK") {
             const prompt = extractPromptText(extracted.messages);
@@ -728,9 +761,11 @@ window.WebSocket = function PGWebSocket(url, protocols) {
   ws.send = function pgSend(data) {
     const messages = extractWsMessages(data);
     if (messages) {
-      // ── Conversation buffer + single-message analysis ─────────────────────
+      // ── Conversation buffer + session risk + analysis ────────────────────
+      const _wsSingle = analyzeMessages(messages);
+      _updateSessionRisk(_wsSingle.score);
       _bufferAdd(messages);
-      const result = _analyzeWithBuffer(messages);
+      const result = _applyDynamicThresholds(_analyzeWithBuffer(messages));
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, String(url));
