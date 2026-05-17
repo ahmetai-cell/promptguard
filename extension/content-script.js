@@ -22,6 +22,49 @@ const LLM_URL_PATTERNS = [
 
 const _OVERRIDE_KEY = "_pg_override";
 
+// ─── Conversation buffer — stateful multi-turn attack detection ────────────────
+//
+// Keeps a sliding window of unique user messages seen this page session.
+// Each new request is analyzed against the full buffer, catching injection
+// attacks that are split across multiple API calls (multi-turn injection).
+//
+// Design: buffer stores only user-role messages, deduped by djb2 hash.
+// Before analysis, history not already present in the current request is
+// prepended so analyzeMessages() sees the full conversation context.
+
+const _BUFFER_MAX = 15;
+const _convBuffer  = [];   // { role: "user", content: string }[]
+const _seenHashes  = new Set();
+
+function _djb2(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h) ^ str.charCodeAt(i);
+  return (h >>> 0).toString(36);
+}
+
+function _bufferAdd(messages) {
+  for (const m of messages) {
+    if (m.role !== "user" && m.role !== "human") continue;
+    const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+    const hash = _djb2(text);
+    if (_seenHashes.has(hash)) continue;
+    _seenHashes.add(hash);
+    _convBuffer.push({ role: "user", content: text });
+    if (_convBuffer.length > _BUFFER_MAX) _convBuffer.shift();
+  }
+}
+
+function _analyzeWithBuffer(messages) {
+  // Prepend buffer history that is NOT already in the current request
+  const currentHashes = new Set(
+    messages
+      .filter((m) => m.role === "user" || m.role === "human")
+      .map((m) => _djb2(typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
+  );
+  const history = _convBuffer.filter((b) => !currentHashes.has(_djb2(b.content)));
+  return analyzeMessages([...history, ...messages]);
+}
+
 // ─── Settings (loaded from service worker on init) ─────────────────────────────
 
 let _pgSettings = {
@@ -438,7 +481,9 @@ async function queryL2(prompt, score, matches, url) {
 // ─── Fetch intercept ──────────────────────────────────────────────────────────
 
 const _fetch = window.fetch.bind(window);
-window.fetch = async function (input, init = {}) {
+let _patchedFetch;
+
+window.fetch = _patchedFetch = async function pgFetch(input, init = {}) {
   const url = typeof input === "string" ? input : input?.url ?? "";
 
   if (!isLLMRequest(url)) return _fetch(input, init);
@@ -465,7 +510,8 @@ window.fetch = async function (input, init = {}) {
   if (body) {
     const extracted = extractMessages(url, body);
     if (extracted) {
-      const result = _applyThresholds(analyzeMessages(extracted.messages));
+      _bufferAdd(extracted.messages);
+      const result = _applyThresholds(_analyzeWithBuffer(extracted.messages));
 
       if (result.verdict === "BLOCK") {
         const prompt = extractPromptText(extracted.messages);
@@ -524,6 +570,24 @@ window.fetch = async function (input, init = {}) {
 
   return response;
 };
+
+// ─── Hook watchdog ────────────────────────────────────────────────────────────
+// Re-applies our fetch patch if page JS overwrites window.fetch.
+// Checks every 2 seconds; logs a tamper event if the hook was replaced.
+
+setInterval(() => {
+  if (window.fetch !== _patchedFetch) {
+    window.fetch = _patchedFetch;
+    _swSend({
+      type: "VERDICT",
+      verdict: "WARN",
+      score: 0.5,
+      matches: ["hook-tamper"],
+      url: location.href,
+      prompt: null,
+    });
+  }
+}, 2000);
 
 // ─── SSE output scanner ───────────────────────────────────────────────────────
 // Reads a tee'd SSE response stream and fires a WARN postMessage if the model's
@@ -597,7 +661,8 @@ XMLHttpRequest.prototype.send = function (body) {
       if (rawBody) {
         const extracted = extractMessages(url, rawBody);
         if (extracted) {
-          const result = _applyThresholds(analyzeMessages(extracted.messages));
+          _bufferAdd(extracted.messages);
+          const result = _applyThresholds(_analyzeWithBuffer(extracted.messages));
 
           if (result.verdict === "BLOCK") {
             const prompt = extractPromptText(extracted.messages);
@@ -663,8 +728,9 @@ window.WebSocket = function PGWebSocket(url, protocols) {
   ws.send = function pgSend(data) {
     const messages = extractWsMessages(data);
     if (messages) {
-      // ── Single-message analysis (existing behaviour) ──────────────────────
-      const result = analyzeMessages(messages);
+      // ── Conversation buffer + single-message analysis ─────────────────────
+      _bufferAdd(messages);
+      const result = _analyzeWithBuffer(messages);
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, String(url));
