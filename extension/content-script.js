@@ -65,29 +65,66 @@ function _analyzeWithBuffer(messages) {
   return analyzeMessages([...history, ...messages]);
 }
 
-// ─── Session risk accumulator — temporal attack detection ──────────────────────
+// ─── Session risk engine v2.5 — dual memory + velocity + attack taxonomy ───────
 //
-// Tracks cumulative suspicion across the page session via exponential moving
-// average. As individual request scores accumulate, effective block/warn
-// thresholds tighten — catching gradual escalation and threshold-bouncing
-// attacks that individually stay just below the block line.
+// Three-signal model for temporal attack detection:
 //
-// Formula:  sessionRisk = sessionRisk * α + newScore * (1-α)
-//   α = 0.70 → recent signals carry 30% weight per call
+//   1. Short-term EMA (α=0.35): burst/spike detector — reacts fast to sudden
+//      score jumps (0.1×4 then 0.9 is immediately flagged by short-term).
 //
-// Effect: after 3 WARN-level messages (score ~0.50 each), sessionRisk ≈ 0.37
-//   → effective block threshold drops from 0.75 → 0.66, triggering BLOCK.
+//   2. Long-term EMA (α=0.85): drift detector — catches gradual escalation
+//      that stays individually below threshold.
+//
+//   3. Velocity signal: rate of change of combined risk — if risk is rising
+//      fast, add a velocity bonus so spike attacks can't hide behind lag.
+//
+//   4. Tag frequency tracker: counts how many times each attack tag appears
+//      in the session. Repeated use of the same attack vector (e.g. 3 jailbreak
+//      attempts) adds a type-specific threshold boost even if individual scores
+//      are low.
+//
+// Combined:  sessionRisk = max(shortRisk, longRisk) + velocity × 0.40
+// Reduction: effectiveBlock = base - min(sessionRisk, 1) × 0.25
 
-let _sessionRisk = 0;   // 0–1, persists for the lifetime of this page
-const _SESSION_ALPHA = 0.70;
-const _SESSION_REDUCTION_MAX = 0.25;   // max threshold reduction at full risk
+let _shortRisk  = 0;   // fast EMA: α=0.35 — burst/spike
+let _longRisk   = 0;   // slow EMA: α=0.85 — drift/escalation
+let _riskPrev   = 0;   // previous combined risk for velocity calculation
+let _sessionRisk = 0;  // effective combined risk (used by _applyDynamicThresholds)
 
-function _updateSessionRisk(score) {
-  _sessionRisk = Math.min(1.0, _sessionRisk * _SESSION_ALPHA + score * (1 - _SESSION_ALPHA));
+const _SESSION_REDUCTION_MAX = 0.25;
+
+// Attack tag frequency across this session
+const _tagCounts = Object.create(null);  // tag → hit count
+
+function _updateSessionRisk(score, matches = []) {
+  // Update tag counts for attack-type awareness
+  for (const m of matches) {
+    const tag = m.split(":")[1] ?? m;
+    _tagCounts[tag] = (_tagCounts[tag] ?? 0) + 1;
+  }
+
+  // Dual EMA
+  _shortRisk = Math.min(1.0, _shortRisk * 0.35 + score * 0.65);
+  _longRisk  = Math.min(1.0, _longRisk  * 0.85 + score * 0.15);
+
+  const base     = Math.max(_shortRisk, _longRisk);
+  const velocity = Math.max(0, base - _riskPrev) * 0.40;  // rising velocity only
+  _riskPrev      = base;
+  _sessionRisk   = Math.min(1.0, base + velocity);
+}
+
+function _tagFrequencyBoost() {
+  // Each tag type seen 2+ times adds a small extra threshold reduction.
+  // Caps at 0.10 so repeated low-level attacks can't engineer an unbounded drop.
+  const maxCount = Math.max(0, ...Object.values(_tagCounts));
+  if (maxCount >= 4) return 0.10;
+  if (maxCount >= 2) return 0.05;
+  return 0;
 }
 
 function _applyDynamicThresholds(result) {
-  const reduction = _sessionRisk * _SESSION_REDUCTION_MAX;
+  const reduction = Math.min(_SESSION_REDUCTION_MAX,
+    _sessionRisk * _SESSION_REDUCTION_MAX + _tagFrequencyBoost());
   const block = Math.max(0.50, (_pgSettings.blockThreshold ?? 0.75) - reduction);
   const warn  = Math.max(0.30, (_pgSettings.warnThreshold  ?? 0.45) - reduction * 0.80);
   const v = result.score >= block ? "BLOCK" : result.score >= warn ? "WARN" : "ALLOW";
@@ -540,7 +577,7 @@ window.fetch = _patchedFetch = async function pgFetch(input, init = {}) {
     const extracted = extractMessages(url, body);
     if (extracted) {
       const singleResult = analyzeMessages(extracted.messages);
-      _updateSessionRisk(singleResult.score);
+      _updateSessionRisk(singleResult.score, singleResult.matches);
       _bufferAdd(extracted.messages);
       const result = _applyDynamicThresholds(_analyzeWithBuffer(extracted.messages));
 
@@ -693,7 +730,7 @@ XMLHttpRequest.prototype.send = function (body) {
         const extracted = extractMessages(url, rawBody);
         if (extracted) {
           const singleResult = analyzeMessages(extracted.messages);
-          _updateSessionRisk(singleResult.score);
+          _updateSessionRisk(singleResult.score, singleResult.matches);
           _bufferAdd(extracted.messages);
           const result = _applyDynamicThresholds(_analyzeWithBuffer(extracted.messages));
 
