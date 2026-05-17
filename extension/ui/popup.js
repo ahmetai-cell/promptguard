@@ -488,6 +488,35 @@ async function fetchGlobalStats() {
   }
 }
 
+// ─── Session state pill ───────────────────────────────────────────────────────
+
+function renderSessionState() {
+  chrome.runtime.sendMessage({ type: "GET_SESSION_STATE" }, (r) => {
+    if (chrome.runtime.lastError) return;
+    const pill  = $("session-pill");
+    const label = $("session-label");
+    const risk  = $("session-risk");
+    const sess  = r?.session;
+
+    if (!sess) {
+      pill.className = "session-pill unknown";
+      label.textContent = "No activity";
+      risk.textContent = "";
+      return;
+    }
+
+    const stateMap = {
+      SAFE:       { cls: "safe",       txt: "Safe"       },
+      SUSPICIOUS: { cls: "suspicious", txt: "Suspicious" },
+      ACTIVE:     { cls: "active",     txt: "Active Threat" },
+    };
+    const s = stateMap[sess.state] ?? { cls: "unknown", txt: sess.state ?? "—" };
+    pill.className = `session-pill ${s.cls}`;
+    label.textContent = s.txt;
+    risk.textContent  = `risk ${(sess.risk * 100).toFixed(0)}%`;
+  });
+}
+
 // ─── Main render ──────────────────────────────────────────────────────────────
 
 async function render() {
@@ -518,6 +547,9 @@ async function render() {
 
   // Global stats (non-blocking)
   fetchGlobalStats();
+
+  // Session state
+  renderSessionState();
 }
 
 render();

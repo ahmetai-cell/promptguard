@@ -14,10 +14,24 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
   }
 });
 
+// Session state per tab — updated by SAGE_STATE verdicts from content-script
+const _tabSessionState = new Map();   // tabId → { state, risk, ts }
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case "VERDICT": {
       const { verdict, score, matches, url, prompt } = msg;
+
+      // SAGE_STATE is a special internal verdict — store it, don't log as event
+      if (verdict === "SAGE_STATE") {
+        const tabId = sender.tab?.id;
+        if (tabId != null) {
+          _tabSessionState.set(tabId, { state: matches[0], risk: score, ts: Date.now() });
+        }
+        sendResponse({ ok: true });
+        return true;
+      }
+
       updateBadge(verdict);
 
       const event = { verdict, score, matches, url, prompt, tabId: sender.tab?.id };
@@ -64,6 +78,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "GET_ENABLED": {
       sendResponse({ enabled: _enabled });
       break;
+    }
+
+    case "GET_SESSION_STATE": {
+      // Popup asks for the current tab's SAGE session state
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tabId = tabs[0]?.id;
+        const sess = tabId != null ? (_tabSessionState.get(tabId) ?? null) : null;
+        sendResponse({ session: sess });
+      });
+      return true;
     }
 
     case "SET_ENABLED": {

@@ -129,6 +129,8 @@ function _updateSessionRisk(score, matches = []) {
   if (_sessionRisk >= 0.45)      _sageState = _SAGE_STATE.ACTIVE;
   else if (_sessionRisk >= 0.15) _sageState = _SAGE_STATE.SUSPICIOUS;
   else                           _sageState = _SAGE_STATE.SAFE;
+
+  _reportSageState();
 }
 
 function _tagFrequencyBoost() {
