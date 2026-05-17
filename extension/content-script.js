@@ -57,12 +57,53 @@ function extractPromptText(messages) {
 // ─── Block overlay ─────────────────────────────────────────────────────────────
 // Rendered in a Shadow DOM so page styles can't bleed in or out.
 
-function showBlockOverlay(score, matches) {
+const _TAG_EXPLAIN = {
+  override:           "Instruction override attempt",
+  "context-end":      "Instruction override attempt",
+  "context-reset":    "Instruction override attempt",
+  "override-de":      "Instruction override attempt",
+  "override-es":      "Instruction override attempt",
+  "override-tr":      "Instruction override attempt",
+  jailbreak:          "Jailbreak technique detected",
+  "jailbreak-tr":     "Jailbreak technique detected",
+  bypass:             "Safety bypass attempt",
+  "bypass-tr":        "Safety bypass attempt",
+  persona:            "AI persona hijacking",
+  "persona-de":       "AI persona hijacking",
+  "persona-tr":       "AI persona hijacking",
+  exfiltration:       "Data exfiltration attempt",
+  "exfiltration-tr":  "Data exfiltration attempt",
+  credential:         "Credential theft attempt",
+  encoding:           "Encoding-based obfuscation",
+  indirect:           "Indirect prompt injection",
+  "soft-switch":      "Task-switch manipulation",
+  social_engineering: "Social engineering attempt",
+  "social-eng":       "Social engineering attempt",
+  "translate-trick":  "Translation obfuscation",
+  "output-control":   "Output manipulation attempt",
+  "dev-mode":         "Developer mode jailbreak",
+  harmful:            "Harmful content request",
+};
+
+function _overlayExplain(matches) {
+  for (const m of matches) {
+    const tag = m.split(":")[1] ?? m;
+    if (_TAG_EXPLAIN[tag]) return _TAG_EXPLAIN[tag];
+  }
+  return "Prompt injection attempt detected";
+}
+
+function _riskLevel(score) {
+  if (score >= 0.90) return { label: "CRITICAL", color: "#ff3b3b" };
+  if (score >= 0.75) return { label: "HIGH",     color: "#f97316" };
+  return                     { label: "MEDIUM",   color: "#eab308" };
+}
+
+function showBlockOverlay(score, matches, url = "", layer = "L1") {
   document.getElementById("_pg_host")?.remove();
 
   const host = document.createElement("div");
   host.id = "_pg_host";
-  // All layout styles on host itself so shadow boundary is clean
   Object.assign(host.style, {
     position: "fixed", bottom: "20px", right: "20px",
     zIndex: "2147483647", all: "initial",
@@ -71,67 +112,185 @@ function showBlockOverlay(score, matches) {
 
   const shadow = host.attachShadow({ mode: "closed" });
 
+  const pct       = Math.round(score * 100);
+  const explain   = _overlayExplain(matches);
+  const risk      = _riskLevel(score);
+  const site      = url ? url.replace(/^https?:\/\//, "").split("/")[0].slice(0, 40) : location.hostname;
+  const layerLbl  = layer === "L2" ? "L1 + L2 DeBERTa" : "L1 Pattern Engine";
+
   const topTags = matches
     .slice(0, 3)
-    .map((m) => `<span class="tag">${m.split(":")[1] ?? m}</span>`)
+    .map((m) => {
+      const tag = m.split(":")[1] ?? m;
+      const pid = m.split(":")[0];
+      return `<span class="tag" title="${pid}">${tag}</span>`;
+    })
     .join("");
 
   shadow.innerHTML = `
     <style>
-      * { box-sizing: border-box; }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       .card {
-        font-family: system-ui, -apple-system, sans-serif;
-        background: #12122a; color: #e8e8f0;
-        border: 1px solid #2a2a50; border-radius: 14px;
-        padding: 16px 18px; width: 310px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.55);
-        animation: up 0.22s ease-out;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: #0d0f1c;
+        border: 1px solid #1e2235;
+        border-top: 3px solid ${risk.color};
+        border-radius: 12px;
+        width: 320px;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04);
+        animation: up 0.20s cubic-bezier(0.16,1,0.3,1);
+        overflow: hidden;
       }
       @keyframes up {
-        from { opacity: 0; transform: translateY(14px); }
-        to   { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; transform: translateY(12px) scale(0.98); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
       }
-      .row   { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-      .icon  { font-size: 19px; line-height: 1; }
-      .title { font-size: 14px; font-weight: 650; flex: 1; }
-      .x     { background: none; border: none; color: #666; font-size: 16px;
-                cursor: pointer; padding: 0; line-height: 1; }
-      .x:hover { color: #ccc; }
-      .score { font-size: 12px; color: #ff7070; margin-bottom: 7px; }
-      .tags  { margin-bottom: 13px; line-height: 1.8; }
-      .tag   { display: inline-block; background: #1e1e42; color: #8a92ff;
-                font-size: 11px; padding: 2px 7px; border-radius: 5px; margin-right: 4px; }
-      .btns  { display: flex; gap: 8px; }
-      .send  { flex: 1; padding: 8px; border-radius: 8px;
-                border: 1px solid #ff5555; background: transparent;
-                color: #ff7070; font-size: 12px; cursor: pointer; }
-      .send:hover  { background: rgba(255,85,85,0.1); }
-      .ok    { flex: 1; padding: 8px; border-radius: 8px; border: none;
-                background: #252548; color: #ccc; font-size: 12px; cursor: pointer; }
-      .ok:hover { background: #2e2e58; }
+
+      /* ── Header ── */
+      .hdr {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 14px 14px 10px;
+      }
+      .hdr-icon {
+        width: 34px; height: 34px; flex-shrink: 0;
+        background: rgba(239,68,68,0.15);
+        border-radius: 9px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 17px;
+      }
+      .hdr-body { flex: 1; min-width: 0; }
+      .hdr-title {
+        font-size: 13px; font-weight: 700;
+        color: #f1f5f9; letter-spacing: -0.01em;
+      }
+      .hdr-site {
+        font-size: 11px; color: #64748b;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        margin-top: 1px;
+      }
+      .risk-badge {
+        flex-shrink: 0;
+        font-size: 9px; font-weight: 800;
+        letter-spacing: 0.08em;
+        padding: 3px 7px; border-radius: 4px;
+        background: rgba(239,68,68,0.15);
+        color: ${risk.color};
+        margin-top: 1px;
+      }
+      .x {
+        flex-shrink: 0;
+        background: none; border: none;
+        color: #475569; font-size: 15px;
+        cursor: pointer; padding: 0; line-height: 1;
+        margin-top: 1px;
+      }
+      .x:hover { color: #94a3b8; }
+
+      /* ── Threat detail ── */
+      .threat {
+        display: flex; align-items: center; gap: 8px;
+        padding: 9px 14px;
+        background: rgba(239,68,68,0.07);
+        border-top: 1px solid rgba(239,68,68,0.15);
+        border-bottom: 1px solid rgba(239,68,68,0.15);
+      }
+      .threat-icon { font-size: 13px; flex-shrink: 0; }
+      .threat-desc { font-size: 12px; color: #fca5a5; font-weight: 500; }
+
+      /* ── Score bar ── */
+      .score-wrap { padding: 10px 14px 0; }
+      .score-meta {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 5px;
+      }
+      .score-lbl { font-size: 10px; color: #64748b; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+      .score-val { font-size: 12px; font-weight: 700; color: ${risk.color}; }
+      .bar-track {
+        height: 5px; background: #1e2235; border-radius: 3px; overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%; width: ${pct}%;
+        background: linear-gradient(90deg, ${risk.color}99, ${risk.color});
+        border-radius: 3px;
+      }
+
+      /* ── Tags + layer ── */
+      .meta { padding: 9px 14px 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .tag {
+        font-size: 10px; font-weight: 600;
+        padding: 2px 7px; border-radius: 4px;
+        background: rgba(99,102,241,0.15); color: #818cf8;
+        cursor: default;
+      }
+      .layer-badge {
+        margin-left: auto;
+        font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
+        padding: 2px 6px; border-radius: 4px;
+        background: rgba(255,255,255,0.05); color: #475569;
+      }
+
+      /* ── Buttons ── */
+      .btns {
+        display: flex; gap: 7px;
+        padding: 0 14px 13px;
+      }
+      .cancel {
+        flex: 1.4; padding: 8px 10px; border-radius: 8px; border: none;
+        background: #ef4444; color: #fff;
+        font-size: 12px; font-weight: 600; cursor: pointer;
+        transition: background 0.15s;
+      }
+      .cancel:hover { background: #dc2626; }
+      .override {
+        flex: 1; padding: 8px 10px; border-radius: 8px;
+        border: 1px solid #1e2235; background: transparent;
+        color: #64748b; font-size: 12px; cursor: pointer;
+        transition: all 0.15s;
+      }
+      .override:hover { border-color: #374151; color: #94a3b8; }
     </style>
     <div class="card">
-      <div class="row">
-        <span class="icon">🛡</span>
-        <span class="title">Injection blocked</span>
+      <div class="hdr">
+        <div class="hdr-icon">🛡</div>
+        <div class="hdr-body">
+          <div class="hdr-title">Prompt Injection Blocked</div>
+          <div class="hdr-site">on ${site}</div>
+        </div>
+        <div class="risk-badge">${risk.label}</div>
         <button class="x" aria-label="Dismiss">✕</button>
       </div>
-      <div class="score">Risk score: ${(score * 100).toFixed(0)}%</div>
-      ${topTags ? `<div class="tags">${topTags}</div>` : ""}
+
+      <div class="threat">
+        <span class="threat-icon">⚠️</span>
+        <span class="threat-desc">${explain}</span>
+      </div>
+
+      <div class="score-wrap">
+        <div class="score-meta">
+          <span class="score-lbl">Risk Score</span>
+          <span class="score-val">${pct}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill"></div></div>
+      </div>
+
+      <div class="meta">
+        ${topTags || ""}
+        <span class="layer-badge">${layerLbl}</span>
+      </div>
+
       <div class="btns">
-        <button class="send">Send anyway</button>
-        <button class="ok">Dismiss</button>
+        <button class="cancel">Cancel Request</button>
+        <button class="override">⚠ Override</button>
       </div>
     </div>
   `;
 
-  const autoClose = setTimeout(() => host.remove(), 8000);
+  const autoClose = setTimeout(() => host.remove(), 10000);
   const close = () => { clearTimeout(autoClose); host.remove(); };
 
   shadow.querySelector(".x").addEventListener("click", close);
-  shadow.querySelector(".ok").addEventListener("click", close);
-  shadow.querySelector(".send").addEventListener("click", () => {
-    // Grant one override pass-through; user must re-submit their message
+  shadow.querySelector(".cancel").addEventListener("click", close);
+  shadow.querySelector(".override").addEventListener("click", () => {
     try { sessionStorage.setItem(_OVERRIDE_KEY, "1"); } catch { /* private browsing */ }
     close();
   });
@@ -185,7 +344,7 @@ window.fetch = async function (input, init = {}) {
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, url);
-        showBlockOverlay(result.score, result.matches);
+        showBlockOverlay(result.score, result.matches, url, "L1");
         return Promise.reject(
           Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
             promptguard: true,
@@ -199,7 +358,7 @@ window.fetch = async function (input, init = {}) {
 
         if (l2Verdict === "BLOCK") {
           postVerdict("BLOCK", result.score, result.matches, url, prompt);
-          showBlockOverlay(result.score, result.matches);
+          showBlockOverlay(result.score, result.matches, url, "L2");
           return Promise.reject(
             Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
               promptguard: true,
@@ -271,7 +430,7 @@ async function _scanSSE(stream, url) {
             const result = analyzeText(delta);
             if (result.verdict === "BLOCK") {
               postVerdict("BLOCK", result.score, result.matches, url);
-              showBlockOverlay(result.score, result.matches);
+              showBlockOverlay(result.score, result.matches, url, "L1");
               reader.cancel();
               return;
             }
@@ -314,7 +473,7 @@ XMLHttpRequest.prototype.send = function (body) {
 
           if (result.verdict === "BLOCK") {
             postVerdict("BLOCK", result.score, result.matches, url);
-            showBlockOverlay(result.score, result.matches);
+            showBlockOverlay(result.score, result.matches, url, "L1");
             this.abort();
             return;
           }
@@ -380,7 +539,7 @@ window.WebSocket = function PGWebSocket(url, protocols) {
 
       if (result.verdict === "BLOCK") {
         postVerdict("BLOCK", result.score, result.matches, String(url));
-        showBlockOverlay(result.score, result.matches);
+        showBlockOverlay(result.score, result.matches, String(url), "L1");
         return;   // drop — do not forward to server
       }
 
@@ -392,7 +551,7 @@ window.WebSocket = function PGWebSocket(url, protocols) {
 
         if (bufResult.verdict === "BLOCK" && result.verdict !== "BLOCK") {
           postVerdict("BLOCK", bufResult.score, bufResult.matches, String(url));
-          showBlockOverlay(bufResult.score, bufResult.matches);
+          showBlockOverlay(bufResult.score, bufResult.matches, String(url), "L1");
           return;   // incremental attack — drop this message
         }
       }
@@ -439,7 +598,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     e.stopImmediatePropagation();
   }
-  showBlockOverlay(result.score, result.matches);
+  showBlockOverlay(result.score, result.matches, location.href, "L1");
 }, true); // capture phase — runs before page handlers
 
 // ─── Utility ──────────────────────────────────────────────────────────────────

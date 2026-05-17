@@ -189,6 +189,58 @@ function renderChart(days) {
   });
 }
 
+// ─── Attack explanation (mirrors content-script TAG_EXPLAIN) ─────────────────
+
+const TAG_EXPLAIN = {
+  override:           "Instruction override attempt",
+  "context-end":      "Instruction override attempt",
+  "context-reset":    "Instruction override attempt",
+  "override-de":      "Instruction override attempt",
+  "override-es":      "Instruction override attempt",
+  "override-tr":      "Instruction override attempt",
+  jailbreak:          "Jailbreak technique detected",
+  "jailbreak-tr":     "Jailbreak technique detected",
+  bypass:             "Safety bypass attempt",
+  "bypass-tr":        "Safety bypass attempt",
+  persona:            "AI persona hijacking",
+  "persona-de":       "AI persona hijacking",
+  "persona-tr":       "AI persona hijacking",
+  exfiltration:       "Data exfiltration attempt",
+  "exfiltration-tr":  "Data exfiltration attempt",
+  credential:         "Credential theft attempt",
+  encoding:           "Encoding-based obfuscation",
+  indirect:           "Indirect prompt injection",
+  "soft-switch":      "Task-switch manipulation",
+  social_engineering: "Social engineering attempt",
+  "social-eng":       "Social engineering attempt",
+  "translate-trick":  "Translation obfuscation",
+  "output-control":   "Output manipulation attempt",
+  "dev-mode":         "Developer mode jailbreak",
+  harmful:            "Harmful content request",
+};
+
+function explainMatches(matches) {
+  for (const m of (matches ?? [])) {
+    const tag = m.split(":")[1] ?? m;
+    if (TAG_EXPLAIN[tag]) return TAG_EXPLAIN[tag];
+  }
+  return "Prompt injection attempt";
+}
+
+function scoreColor(score) {
+  if (score >= 0.90) return "#ef4444";
+  if (score >= 0.75) return "#f97316";
+  return "#eab308";
+}
+
+function fmtTs(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return sameDay ? `Today ${time}` : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
+}
+
 // ─── Recent events ────────────────────────────────────────────────────────────
 
 function renderEvents(events) {
@@ -212,22 +264,79 @@ function renderEvents(events) {
       .split("/")[0]
       .slice(0, 40);
 
-    const tagStr = (ev.matches ?? [])
-      .slice(0, 3)
-      .map((m) => {
-        const raw = m.split(":")[1] ?? m;
-        return CAT_LABEL[raw] ?? raw;
-      })
-      .join(" · ");
+    const reason = explainMatches(ev.matches);
+    const pct    = Math.round((ev.score ?? 0) * 100);
+    const color  = scoreColor(ev.score ?? 0);
+    const riskLabel = (ev.score ?? 0) >= 0.90 ? "CRITICAL" : (ev.score ?? 0) >= 0.75 ? "HIGH" : "MEDIUM";
+
+    // Pattern chips — show pattern IDs + category
+    const chips = (ev.matches ?? []).slice(0, 5).map((m) => {
+      const pid = m.split(":")[0];
+      const tag = m.split(":")[1] ?? m;
+      const label = CAT_LABEL[tag] ?? tag;
+      return `<span class="ev-pattern-chip" title="${label}">${pid}: ${tag}</span>`;
+    }).join("");
+
+    // Prompt preview (first 120 chars)
+    const promptPreview = ev.prompt
+      ? ev.prompt.slice(0, 120) + (ev.prompt.length > 120 ? "…" : "")
+      : null;
 
     el.innerHTML = `
-      <span class="badge ${ev.verdict}">${ev.verdict}</span>
-      <div class="ev-body">
-        <div class="ev-url">${shortUrl}</div>
-        ${tagStr ? `<div class="ev-tags">${tagStr}</div>` : ""}
+      <div class="ev-row">
+        <span class="badge ${ev.verdict}">${ev.verdict}</span>
+        <div class="ev-body">
+          <div class="ev-url">${shortUrl}</div>
+          <div class="ev-reason">${reason}</div>
+        </div>
+        <span class="ev-age">${ago(ev.ts)}</span>
+        <span class="ev-arrow">▶</span>
       </div>
-      <span class="ev-age">${ago(ev.ts)}</span>
+      <div class="ev-detail">
+        <div class="ev-detail-row">
+          <span class="ev-detail-lbl">Site</span>
+          <span class="ev-detail-val">${ev.url ?? "—"}</span>
+        </div>
+        <div class="ev-detail-row">
+          <span class="ev-detail-lbl">Risk</span>
+          <div class="ev-score-wrap">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span class="ev-detail-val" style="color:${color};font-weight:700">${pct}% — ${riskLabel}</span>
+              <span class="ev-layer">L1 Pattern Engine</span>
+            </div>
+            <div class="ev-score-bar-track">
+              <div class="ev-score-bar-fill" style="width:${pct}%;background:${color}"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ev-detail-row">
+          <span class="ev-detail-lbl">Why</span>
+          <span class="ev-detail-val">${reason}</span>
+        </div>
+        ${chips ? `
+        <div class="ev-detail-row">
+          <span class="ev-detail-lbl">Patterns</span>
+          <div class="ev-detail-val">${chips}</div>
+        </div>` : ""}
+        ${promptPreview ? `
+        <div class="ev-detail-row">
+          <span class="ev-detail-lbl">Prompt</span>
+          <div class="ev-detail-val">
+            <div class="ev-prompt-preview">${promptPreview}</div>
+          </div>
+        </div>` : ""}
+        <div class="ev-detail-row">
+          <span class="ev-detail-lbl">Time</span>
+          <span class="ev-detail-val">${fmtTs(ev.ts)}</span>
+        </div>
+      </div>
     `;
+
+    // Toggle detail on click
+    el.addEventListener("click", () => {
+      el.classList.toggle("open");
+    });
+
     list.appendChild(el);
   });
 }
