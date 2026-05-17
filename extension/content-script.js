@@ -14,6 +14,8 @@ const LLM_URL_PATTERNS = [
   "openai.com/v1/chat/completions",
   "anthropic.com/v1/messages",
   "chatgpt.com/backend-api/conversation",
+  "chatgpt.com/backend-api/f/",       // newer ChatGPT REST endpoint
+  "ws.chatgpt.com",                    // ChatGPT WebSocket (2025)
   "claude.ai/api/organizations",
   "bedrock-runtime",
   "/api/chat",

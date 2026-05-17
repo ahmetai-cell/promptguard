@@ -5,12 +5,20 @@
 document.addEventListener("_pg_msg", (e) => {
   const msg = e.detail;
   if (!msg) return;
-  chrome.runtime.sendMessage(msg).catch(() => {});
+  try {
+    chrome.runtime.sendMessage(msg).catch(() => {});
+  } catch {
+    // Extension context invalidated (e.g. after extension reload) — ignore silently
+  }
 });
 
 // Forward PG_ENABLED broadcasts from service worker back to MAIN world
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "PG_ENABLED") {
-    document.dispatchEvent(new CustomEvent("_pg_enabled", { detail: msg.enabled }));
-  }
-});
+try {
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "PG_ENABLED") {
+      document.dispatchEvent(new CustomEvent("_pg_enabled", { detail: msg.enabled }));
+    }
+  });
+} catch {
+  // Extension context invalidated — listener not registered, fail safe
+}
