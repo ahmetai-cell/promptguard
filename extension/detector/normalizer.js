@@ -47,11 +47,23 @@ function _decodeBase64Fragments(text) {
 // "!gn0r3 411 y0ur pr3v!0u5 !n57ruc7!0n5" → "ignore all your previous instructions"
 //
 // Maps: 1→l  4→a  0→o  3→e  7→t  5→s  !→i  @→a  $→s  |→l
+//
+// "1" maps to "l" (visual lookalike). A second pass (_fixInjectionLeet) handles
+// the ambiguity where 1 is used as "i" in injection keywords ("1gnore" → "ignore").
 
 const LEET_MAP = {
   "4":"a","@":"a","3":"e","1":"l","|":"l","!":"i",
   "0":"o","7":"t","+":"t","5":"s","$":"s",
 };
+
+// Word-level injection fix: "lgnore" (from 1→l) → "ignore" etc.
+// Only exact whole-word matches to avoid over-substitution.
+const LEET_INJECTION_FIX = new Map([
+  ["lgnore","ignore"],["lgnoring","ignoring"],["lgnored","ignored"],
+  ["lnstructions","instructions"],["lnstruction","instruction"],["lnstruct","instruct"],
+  ["lnject","inject"],["lnjection","injection"],
+  ["lnitial","initial"],["lnput","input"],
+]);
 const LEET_CHARS = new Set(Object.keys(LEET_MAP));
 
 function _applyLeet(chars) {
@@ -94,6 +106,8 @@ export function normalizeText(text) {
   t = chars.join("");
 
   t = _reverseLeet(t);                  // 5. leet
+  // 5b. injection keyword fix: "lgnore" → "ignore" (1→l ambiguity)
+  t = t.replace(/\b[a-z]+\b/gi, (w) => LEET_INJECTION_FIX.get(w.toLowerCase()) ?? w);
   t = t.replace(/[^\S\n]{2,}/g, " ");  // 6. whitespace
 
   return t;
