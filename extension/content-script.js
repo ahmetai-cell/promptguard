@@ -173,10 +173,12 @@ let _pgSettings = {
   whitelist:      [],
 };
 
-chrome.runtime.sendMessage({ type: "GET_SETTINGS" }, (r) => {
-  if (chrome.runtime.lastError) return;
-  if (r?.settings) _pgSettings = { ..._pgSettings, ...r.settings };
-});
+try {
+  chrome.runtime.sendMessage({ type: "GET_SETTINGS" }, (r) => {
+    if (chrome.runtime?.lastError) return;
+    if (r?.settings) _pgSettings = { ..._pgSettings, ...r.settings };
+  });
+} catch { /* chrome.runtime unavailable in this context */ }
 
 function _isWhitelisted(url) {
   try {
