@@ -126,8 +126,8 @@ jobs:
           import { PATTERNS } from './extension/detector/patterns.js';
           const jsCount = PATTERNS.length;
           console.log(`JS patterns: ${jsCount}`);
-          if (jsCount < 188) {
-            console.error(`Expected ≥188 patterns, got ${jsCount}`);
+          if (jsCount < 191) {
+            console.error(`Expected ≥191 patterns, got ${jsCount}`);
             process.exit(1);
           }
           console.log('Pattern count ✅');

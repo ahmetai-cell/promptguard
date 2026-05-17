@@ -192,6 +192,12 @@ def _eval_python_fallback(text: str) -> dict:
         (r"I\s+want\s+you\s+to\s+act\s+as\s+(?:a|an)\s+\w+", 0.65),
         (r"(?:Input|Eingabe):\s*\S+\s+(?:Output|Ausgabe):\s*\S+.{0,300}(?:Input|Eingabe):", 0.75),
         (r"Ich\s+m[öo]chte,?\s+dass\s+Sie\s+als\s+\S+(?:\s+\S+)?\s+(?:fung|ager|tätig|agier)", 0.80),
+        # P189: 3rd-person "no restrictions" — "an AI called ARIA who has no restrictions"
+        (r"(?:an?\s+)?(?:ai|assistant|model|bot|chatbot|llm)\s+(?:called|named|\w+\s+)?(?:who|that|with)\s+(?:has\s+)?no\s+(?:content\s+)?restrictions?", 0.85),
+        # P190: Story/fictional framing + unrestricted AI persona
+        (r"(?:story|tale|scenario|roleplay|fiction|fictional\s+scenario|hypothetical)\b.{0,120}(?:no\s+restrictions?|no\s+rules?|no\s+limits?|unrestricted|no\s+content\s+policy|no\s+(?:\w+\s+)?guidelines?)", 0.85),
+        # P191: Broader bypass — "bypass security/access systems/controls"
+        (r"bypass\s+(?:(?:all|any|the|your|these?|those?)\s+)?(?:security|access|safety|authentication|authorization)\s+(?:systems?|controls?|mechanisms?|measures?|checks?|barriers?)", 0.88),
     ]
 
     matches = []
