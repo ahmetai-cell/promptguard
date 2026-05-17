@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Welcome to PromptGuard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #0a0e1a;
+      --card:   #111827;
+      --border: #1f2937;
+      --accent: #7c3aed;
+      --red:    #ef4444;
+      --orange: #f97316;
+      --green:  #22c55e;
+      --txt1:   #f1f5f9;
+      --txt2:   #94a3b8;
+      --txt3:   #475569;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--txt1);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+      padding: 40px 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      max-width: 560px;
+      width: 100%;
+      padding: 48px 44px 36px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Background glow */
+    .card::before {
+      content: "";
+      position: absolute;
+      top: -80px; left: 50%; transform: translateX(-50%);
+      width: 300px; height: 200px;
+      background: radial-gradient(ellipse, rgba(124,58,237,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── Steps ── */
+    .step { display: none; }
+    .step.active { display: block; animation: fadein 0.3s ease; }
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Step 1 */
+    .hero-icon {
+      font-size: 56px;
+      text-align: center;
+      margin-bottom: 20px;
+      display: block;
+      filter: drop-shadow(0 0 20px rgba(124,58,237,0.4));
+    }
+    .step-title {
+      font-size: 26px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: -0.03em;
+      margin-bottom: 10px;
+    }
+    .step-sub {
+      font-size: 15px;
+      color: var(--txt2);
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    /* Pipeline diagram */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .pipe-node {
+      text-align: center;
+      flex: 1;
+    }
+    .pipe-box {
+      background: rgba(124,58,237,0.12);
+      border: 1px solid rgba(124,58,237,0.25);
+      border-radius: 10px;
+      padding: 10px 8px;
+      margin-bottom: 6px;
+    }
+    .pipe-box .pipe-icon { font-size: 22px; display: block; margin-bottom: 2px; }
+    .pipe-box .pipe-lbl { font-size: 11px; font-weight: 700; color: #a78bfa; }
+    .pipe-box .pipe-desc { font-size: 10px; color: var(--txt3); margin-top: 1px; }
+    .pipe-arrow { font-size: 18px; color: var(--txt3); flex-shrink: 0; }
+
+    .pipe-result {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .result-chip {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    .result-chip.block { background: rgba(239,68,68,0.15); color: var(--red); }
+    .result-chip.warn  { background: rgba(249,115,22,0.15); color: var(--orange); }
+    .result-chip.allow { background: rgba(34,197,94,0.15);  color: var(--green); }
+
+    /* Step 2 */
+    .how-list { list-style: none; margin-bottom: 24px; }
+    .how-item {
+      display: flex;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .how-item:last-child { border-bottom: none; }
+    .how-num {
+      width: 28px; height: 28px;
+      background: rgba(124,58,237,0.15);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800;
+      color: #a78bfa;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .how-body {}
+    .how-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .how-desc  { font-size: 12px; color: var(--txt2); line-height: 1.5; }
+
+    /* Step 3 */
+    .checkmark {
+      font-size: 56px;
+      text-align: center;
+      display: block;
+      margin-bottom: 20px;
+      animation: pop 0.4s cubic-bezier(0.16,1,0.3,1);
+    }
+    @keyframes pop {
+      from { transform: scale(0.4); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
+    .kpi-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .kpi-box {
+      flex: 1;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+    }
+    .kpi-val  { font-size: 20px; font-weight: 800; color: #a78bfa; }
+    .kpi-lbl  { font-size: 10px; color: var(--txt3); margin-top: 2px; }
+    .action-links {
+      display: flex;
+      gap: 10px;
+    }
+    .action-link-primary {
+      flex: 1;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.15s;
+    }
+    .action-link-primary:hover { background: #6d28d9; }
+    .action-link-secondary {
+      flex: 1;
+      background: transparent;
+      color: var(--txt2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .action-link-secondary:hover { border-color: var(--txt3); color: var(--txt1); }
+
+    /* ── Navigation ── */
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 32px;
+    }
+    .dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background 0.2s, width 0.2s;
+    }
+    .dot.active {
+      background: var(--accent);
+      width: 20px;
+      border-radius: 4px;
+    }
+    .nav-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--txt2);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .nav-btn:hover { border-color: var(--txt3); color: var(--txt1); }
+    .nav-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .nav-btn.primary:hover { background: #6d28d9; }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- Step 1: What it does -->
+  <div class="step active" id="step-1">
+    <span class="hero-icon">🛡</span>
+    <div class="step-title">Welcome to PromptGuard</div>
+    <div class="step-sub">Your AI sessions are now protected by a real-time<br>prompt injection firewall.</div>
+
+    <div class="pipeline">
+      <div class="pipe-node">
+        <div class="pipe-box">
+          <span class="pipe-icon">⚡</span>
+          <div class="pipe-lbl">L1</div>
+          <div class="pipe-desc">194 patterns<br>&lt;1ms</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node">
+        <div class="pipe-box">
+          <span class="pipe-icon">🧠</span>
+          <div class="pipe-lbl">L2</div>
+          <div class="pipe-desc">DeBERTa ML<br>&lt;400ms</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node">
+        <div class="pipe-box">
+          <span class="pipe-icon">💬</span>
+          <div class="pipe-lbl">L3</div>
+          <div class="pipe-desc">GPT-4o-mini<br>edge cases</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-result">
+      <span class="result-chip block">BLOCK</span>
+      <span class="result-chip warn">WARN</span>
+      <span class="result-chip allow">ALLOW</span>
+    </div>
+  </div>
+
+  <!-- Step 2: How to use -->
+  <div class="step" id="step-2">
+    <div class="step-title">How it works</div>
+    <div class="step-sub">PromptGuard runs invisibly in the background — no setup needed.</div>
+
+    <ul class="how-list">
+      <li class="how-item">
+        <div class="how-num">1</div>
+        <div class="how-body">
+          <div class="how-title">Use AI tools normally</div>
+          <div class="how-desc">Open ChatGPT, Claude, or any AI tool. PromptGuard monitors every request automatically — nothing to configure.</div>
+        </div>
+      </li>
+      <li class="how-item">
+        <div class="how-num">2</div>
+        <div class="how-body">
+          <div class="how-title">Get alerted on threats</div>
+          <div class="how-desc">When an injection attack is detected, a card appears in the bottom-right corner. You can cancel the request or override if it's a false positive.</div>
+        </div>
+      </li>
+      <li class="how-item">
+        <div class="how-num">3</div>
+        <div class="how-body">
+          <div class="how-title">Review your dashboard</div>
+          <div class="how-desc">Click the PromptGuard icon in your toolbar to see blocked threats, attack categories, and a 7-day history chart.</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Step 3: You're protected -->
+  <div class="step" id="step-3">
+    <span class="checkmark">✅</span>
+    <div class="step-title">You're protected</div>
+    <div class="step-sub">PromptGuard is active across all AI services.</div>
+
+    <div class="kpi-row">
+      <div class="kpi-box">
+        <div class="kpi-val">98.3%</div>
+        <div class="kpi-lbl">Precision</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-val">87.2%</div>
+        <div class="kpi-lbl">Recall</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-val">194</div>
+        <div class="kpi-lbl">Attack patterns</div>
+      </div>
+    </div>
+
+    <div class="action-links">
+      <button class="action-link-primary" id="test-btn">🧪 Test it now</button>
+      <button class="action-link-secondary" id="settings-btn">⚙ Open Settings</button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav">
+    <button class="nav-btn" id="back-btn" disabled>← Back</button>
+    <div class="dots">
+      <div class="dot active" id="dot-1"></div>
+      <div class="dot" id="dot-2"></div>
+      <div class="dot" id="dot-3"></div>
+    </div>
+    <button class="nav-btn primary" id="next-btn">Next →</button>
+  </div>
+
+</div>
+
+<script src="onboarding.js"></script>
+</body>
+</html>

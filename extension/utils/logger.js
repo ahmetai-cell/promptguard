@@ -1,6 +1,6 @@
 import { cacheGet, cacheSet } from "./cache.js";
 
-const PROXY_ENDPOINT = "https://promptguard-l2-production.up.railway.app/events";
+const DEFAULT_PROXY = "https://promptguard-l2-production.up.railway.app";
 
 // Injected at build time by esbuild --define:PG_TOKEN='"..."'
 // Falls back to empty string in dev builds without a token configured.
@@ -11,6 +11,16 @@ const _HEADERS = {
   "Content-Type": "application/json",
   ...(_TOKEN ? { "X-PG-Token": _TOKEN } : {}),
 };
+
+async function _proxyEndpoint() {
+  try {
+    const r = await chrome.storage.local.get("pg_settings");
+    const base = r.pg_settings?.proxyUrl?.replace(/\/$/, "") ?? DEFAULT_PROXY;
+    return `${base}/events`;
+  } catch {
+    return `${DEFAULT_PROXY}/events`;
+  }
+}
 
 /**
  * Send a detection event to the proxy — fire-and-forget audit log.
@@ -32,13 +42,13 @@ export function logEvent(event) {
     ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 120) : "",
   };
 
-  fetch(PROXY_ENDPOINT, {
-    method: "POST",
-    headers: _HEADERS,
-    body: JSON.stringify(payload),
-    keepalive: true,
-  }).catch(() => {
-    // Swallow — logging should never break the extension
+  _proxyEndpoint().then((endpoint) => {
+    fetch(endpoint, {
+      method: "POST",
+      headers: _HEADERS,
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {});
   });
 }
 
@@ -71,7 +81,8 @@ export async function checkL2(event) {
   };
 
   try {
-    const resp = await fetch(PROXY_ENDPOINT, {
+    const endpoint = await _proxyEndpoint();
+    const resp = await fetch(endpoint, {
       method: "POST",
       headers: _HEADERS,
       body: JSON.stringify(payload),

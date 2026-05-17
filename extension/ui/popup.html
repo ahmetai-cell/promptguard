@@ -272,14 +272,12 @@
     }
     .ev.open .ev-arrow { transform: rotate(90deg); }
 
-    /* Detail panel */
+    /* Detail panel — animated via max-height; override at bottom of file */
     .ev-detail {
-      display: none;
-      padding: 0 16px 10px;
+      padding: 0 16px;
       border-top: 1px solid #1a2230;
       background: rgba(255,255,255,0.01);
     }
-    .ev.open .ev-detail { display: block; }
 
     .ev-detail-row {
       display: flex;
@@ -338,6 +336,32 @@
       color: var(--txt3);
     }
 
+    /* Copy button */
+    .copy-prompt-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border2);
+      color: var(--txt3);
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-prompt-btn:hover { color: var(--txt2); border-color: var(--txt3); }
+
+    /* Smooth expand */
+    .ev-detail {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.2s ease, padding 0.2s ease;
+      padding-top: 0; padding-bottom: 0;
+    }
+    .ev.open .ev-detail {
+      max-height: 400px;
+      padding-top: 0;
+      padding-bottom: 10px;
+    }
+
     /* Prompt preview */
     .ev-prompt-preview {
       font-size: 10px;
@@ -361,6 +385,34 @@
       color: var(--txt3);
       font-size: 12px;
     }
+
+    /* ── Gear button ─────────────────────────────────────────────────────── */
+    .gear-btn {
+      background: none;
+      border: none;
+      color: var(--txt3);
+      font-size: 15px;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 5px;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .gear-btn:hover { color: var(--txt2); }
+
+    /* ── Delta stat ──────────────────────────────────────────────────────── */
+    .stat .delta {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--txt3);
+      margin-top: 2px;
+    }
+    .stat.bl .delta.pos { color: var(--red); }
+    .stat.wa .delta.pos { color: var(--orange); }
+    .stat.sc .delta.pos { color: var(--sky); }
+
+    /* ── Category icon ───────────────────────────────────────────────────── */
+    .cat-icon { font-size: 12px; flex-shrink: 0; width: 18px; text-align: center; }
 
     /* ── Footer ──────────────────────────────────────────────────────────── */
     footer {
@@ -427,6 +479,7 @@
       <input type="checkbox" id="enabled-toggle" checked />
       <span class="slider"></span>
     </label>
+    <button class="gear-btn" id="gear-btn" title="Settings">⚙</button>
   </div>
 </header>
 
@@ -435,14 +488,17 @@
   <div class="stat bl">
     <div class="val" id="s-blocked">—</div>
     <div class="lbl">Blocked</div>
+    <div class="delta" id="d-blocked"></div>
   </div>
   <div class="stat wa">
     <div class="val" id="s-warned">—</div>
     <div class="lbl">Warned</div>
+    <div class="delta" id="d-warned"></div>
   </div>
   <div class="stat sc">
     <div class="val" id="s-scanned">—</div>
     <div class="lbl">Scanned</div>
+    <div class="delta" id="d-scanned"></div>
   </div>
 </div>
 
@@ -470,7 +526,7 @@
   <span>Last 7 Days</span>
 </div>
 <div class="chart-wrap">
-  <svg id="chart-svg" height="60" viewBox="0 0 348 60" preserveAspectRatio="none"></svg>
+  <svg id="chart-svg" height="72" viewBox="0 0 348 72" preserveAspectRatio="none"></svg>
 </div>
 
 <!-- Recent events -->
@@ -483,7 +539,7 @@
 
 <!-- Footer -->
 <footer>
-  <span class="ver">v0.2.0 · L1 + L2</span>
+  <span class="ver">v0.2.0 · L1 + L2 + L3</span>
   <button class="clear-btn" id="clear-btn">Clear data</button>
 </footer>
 

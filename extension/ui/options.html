@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PromptGuard Settings</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0a0e1a;
+      --card:    #111827;
+      --border:  #1f2937;
+      --border2: #253046;
+      --accent:  #7c3aed;
+      --red:     #ef4444;
+      --orange:  #f97316;
+      --green:   #22c55e;
+      --txt1:    #f1f5f9;
+      --txt2:    #94a3b8;
+      --txt3:    #475569;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--txt1);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      padding: 0 0 40px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+    .topbar-logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      box-shadow: 0 0 12px rgba(124,58,237,0.4);
+    }
+    .topbar h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+    .topbar-sub { font-size: 12px; color: var(--txt3); margin-left: 2px; }
+    .save-btn {
+      margin-left: auto;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .save-btn:hover { background: #6d28d9; }
+    .save-toast {
+      font-size: 12px;
+      color: var(--green);
+      opacity: 0;
+      transition: opacity 0.3s;
+      margin-right: 8px;
+    }
+    .save-toast.show { opacity: 1; }
+
+    /* ── Layout ── */
+    .content {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 28px 24px 0;
+    }
+
+    /* ── Section card ── */
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .section-hd {
+      padding: 14px 20px 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .section-icon { font-size: 16px; }
+    .section-title { font-size: 14px; font-weight: 700; color: var(--txt1); }
+    .section-desc  { font-size: 11px; color: var(--txt3); margin-top: 1px; }
+    .section-body  { padding: 18px 20px; }
+
+    /* ── Form rows ── */
+    .field { margin-bottom: 20px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .field-lbl {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--txt1);
+    }
+    .field-val {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 36px;
+      text-align: right;
+    }
+    .field-hint {
+      font-size: 11px;
+      color: var(--txt3);
+      margin-top: 5px;
+      line-height: 1.5;
+    }
+
+    /* ── Slider ── */
+    .slider-wrap { position: relative; }
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 5px;
+      border-radius: 3px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(124,58,237,0.5);
+      cursor: pointer;
+      transition: box-shadow 0.15s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      box-shadow: 0 0 14px rgba(124,58,237,0.7);
+    }
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 5px;
+    }
+    .slider-labels span {
+      font-size: 10px;
+      color: var(--txt3);
+    }
+
+    /* ── Toggle row ── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-info {}
+    .toggle-lbl { font-size: 13px; font-weight: 600; color: var(--txt1); }
+    .toggle-desc { font-size: 11px; color: var(--txt3); margin-top: 2px; }
+    .toggle {
+      position: relative;
+      width: 40px; height: 22px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .slider-t {
+      position: absolute; inset: 0;
+      background: var(--txt3);
+      border-radius: 22px;
+      transition: background 0.2s;
+    }
+    .slider-t::after {
+      content: "";
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider-t { background: var(--accent); }
+    .toggle input:checked + .slider-t::after { transform: translateX(18px); }
+
+    /* ── Whitelist ── */
+    .whitelist-add {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .whitelist-add input {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      color: var(--txt1);
+      font-size: 13px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .whitelist-add input::placeholder { color: var(--txt3); }
+    .whitelist-add input:focus { border-color: var(--accent); }
+    .add-btn {
+      background: rgba(124,58,237,0.15);
+      border: 1px solid rgba(124,58,237,0.3);
+      color: #a78bfa;
+      border-radius: 7px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .add-btn:hover { background: rgba(124,58,237,0.25); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 6px;
+      padding: 3px 8px 3px 10px;
+      font-size: 12px;
+      color: #818cf8;
+    }
+    .chip-x {
+      background: none;
+      border: none;
+      color: #475569;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0;
+    }
+    .chip-x:hover { color: var(--red); }
+    .no-domains {
+      font-size: 12px;
+      color: var(--txt3);
+      font-style: italic;
+    }
+
+    /* ── Proxy URL ── */
+    .proxy-field {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .proxy-field input {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      color: var(--txt1);
+      font-size: 12px;
+      font-family: "SF Mono", "Fira Mono", monospace;
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .proxy-field input:focus { border-color: var(--accent); }
+    .reset-btn {
+      background: transparent;
+      border: 1px solid var(--border2);
+      color: var(--txt3);
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .reset-btn:hover { border-color: var(--txt3); color: var(--txt2); }
+
+    /* ── Danger zone ── */
+    .danger-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .danger-info .danger-lbl { font-size: 13px; font-weight: 600; color: var(--txt1); }
+    .danger-info .danger-desc { font-size: 11px; color: var(--txt3); margin-top: 2px; }
+    .danger-btn {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: var(--red);
+      border-radius: 7px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .danger-btn:hover { background: rgba(239,68,68,0.2); }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">🛡</div>
+  <div>
+    <div class="topbar h1" style="font-size:16px;font-weight:700">PromptGuard</div>
+    <div class="topbar-sub">Settings</div>
+  </div>
+  <span class="save-toast" id="save-toast">✓ Saved</span>
+  <button class="save-btn" id="save-btn">Save Changes</button>
+</div>
+
+<div class="content">
+
+  <!-- Detection Thresholds -->
+  <div class="section">
+    <div class="section-hd">
+      <span class="section-icon">🎯</span>
+      <div>
+        <div class="section-title">Detection Thresholds</div>
+        <div class="section-desc">Adjust sensitivity for blocking and warning verdicts</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <div class="field-label">
+          <span class="field-lbl">Block Threshold</span>
+          <span class="field-val" id="block-val">0.75</span>
+        </div>
+        <input type="range" id="block-slider" min="50" max="95" step="5" value="75" />
+        <div class="slider-labels"><span>0.50 (permissive)</span><span>0.95 (strict)</span></div>
+        <div class="field-hint">Prompts scoring above this threshold are blocked immediately. Lower = more blocks.</div>
+      </div>
+      <div class="field">
+        <div class="field-label">
+          <span class="field-lbl">Warn Threshold</span>
+          <span class="field-val" id="warn-val">0.45</span>
+        </div>
+        <input type="range" id="warn-slider" min="30" max="70" step="5" value="45" />
+        <div class="slider-labels"><span>0.30</span><span>0.70</span></div>
+        <div class="field-hint">Prompts in the warn zone are escalated to L2 cloud analysis.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer Control -->
+  <div class="section">
+    <div class="section-hd">
+      <span class="section-icon">🔬</span>
+      <div>
+        <div class="section-title">Detection Layers</div>
+        <div class="section-desc">L1 pattern engine is always active. Toggle cloud layers below.</div>
+      </div>
+    </div>
+    <div class="section-body" style="padding-top:6px;padding-bottom:6px">
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-lbl">L2 — DeBERTa Semantic Analysis</div>
+          <div class="toggle-desc">Cloud ML model confirms suspicious prompts (~400ms latency)</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="l2-toggle" checked />
+          <span class="slider-t"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-lbl">L3 — GPT-4o-mini Fallback</div>
+          <div class="toggle-desc">Reasoning-based edge-case analysis when L2 is uncertain</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="l3-toggle" checked />
+          <span class="slider-t"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Whitelist -->
+  <div class="section">
+    <div class="section-hd">
+      <span class="section-icon">✅</span>
+      <div>
+        <div class="section-title">Whitelisted Domains</div>
+        <div class="section-desc">Domains exempt from scanning — prompts are passed through without analysis</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="whitelist-add">
+        <input type="text" id="domain-input" placeholder="example.com" />
+        <button class="add-btn" id="add-domain-btn">+ Add</button>
+      </div>
+      <div class="chips" id="chips-container">
+        <span class="no-domains" id="no-domains-msg">No domains whitelisted.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Proxy URL -->
+  <div class="section">
+    <div class="section-hd">
+      <span class="section-icon">🔗</span>
+      <div>
+        <div class="section-title">L2 Proxy URL</div>
+        <div class="section-desc">URL of the PromptGuard analysis proxy. Change if you self-host.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="proxy-field">
+        <input type="text" id="proxy-input" placeholder="https://your-proxy.example.com" />
+        <button class="reset-btn" id="reset-proxy-btn">Reset default</button>
+      </div>
+      <div class="field-hint" style="margin-top:8px">Must support POST /events endpoint. Leave default unless you deploy your own proxy.</div>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="section">
+    <div class="section-hd">
+      <span class="section-icon">⚠️</span>
+      <div>
+        <div class="section-title">Data</div>
+        <div class="section-desc">Manage locally stored detection history</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="danger-row">
+        <div class="danger-info">
+          <div class="danger-lbl">Clear Detection History</div>
+          <div class="danger-desc">Removes all stored events, stats, and category data</div>
+        </div>
+        <button class="danger-btn" id="clear-data-btn">Clear All Data</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="options.js"></script>
+</body>
+</html>

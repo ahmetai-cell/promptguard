@@ -7,6 +7,13 @@ chrome.storage.local.get("pg_enabled", (r) => {
   _enabled = r.pg_enabled ?? true;
 });
 
+// Open onboarding on first install
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("ui/onboarding.html") });
+  }
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case "VERDICT": {
@@ -38,6 +45,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     case "GET_STATS": {
       getStats().then(sendResponse);
+      return true;
+    }
+
+    case "GET_SETTINGS": {
+      chrome.storage.local.get("pg_settings", (r) => {
+        sendResponse({ settings: r.pg_settings ?? {} });
+      });
       return true;
     }
 

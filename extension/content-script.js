@@ -22,6 +22,36 @@ const LLM_URL_PATTERNS = [
 
 const _OVERRIDE_KEY = "_pg_override";
 
+// ─── Settings (loaded from service worker on init) ─────────────────────────────
+
+let _pgSettings = {
+  blockThreshold: 0.75,
+  warnThreshold:  0.45,
+  l2Enabled:      true,
+  whitelist:      [],
+};
+
+chrome.runtime.sendMessage({ type: "GET_SETTINGS" }, (r) => {
+  if (chrome.runtime.lastError) return;
+  if (r?.settings) _pgSettings = { ..._pgSettings, ...r.settings };
+});
+
+function _isWhitelisted(url) {
+  try {
+    const host = new URL(url).hostname;
+    return (_pgSettings.whitelist ?? []).some(
+      (d) => host === d || host.endsWith("." + d)
+    );
+  } catch { return false; }
+}
+
+function _applyThresholds(result) {
+  const block = _pgSettings.blockThreshold ?? 0.75;
+  const warn  = _pgSettings.warnThreshold  ?? 0.45;
+  const v = result.score >= block ? "BLOCK" : result.score >= warn ? "WARN" : "ALLOW";
+  return v === result.verdict ? result : { ...result, verdict: v };
+}
+
 // ─── Enabled state ─────────────────────────────────────────────────────────────
 
 let _pgEnabled = true;
@@ -85,6 +115,34 @@ const _TAG_EXPLAIN = {
   harmful:            "Harmful content request",
 };
 
+const _THREAT_ICONS = {
+  override:           "🔀",
+  "context-end":      "🔀",
+  "context-reset":    "🔀",
+  "override-de":      "🔀",
+  "override-es":      "🔀",
+  "override-tr":      "🔀",
+  jailbreak:          "🔓",
+  "jailbreak-tr":     "🔓",
+  bypass:             "🚧",
+  "bypass-tr":        "🚧",
+  persona:            "👤",
+  "persona-de":       "👤",
+  "persona-tr":       "👤",
+  exfiltration:       "📤",
+  "exfiltration-tr":  "📤",
+  credential:         "🔑",
+  encoding:           "🔢",
+  indirect:           "🔗",
+  "soft-switch":      "↩️",
+  social_engineering: "🎭",
+  "social-eng":       "🎭",
+  "translate-trick":  "🌐",
+  "output-control":   "📝",
+  "dev-mode":         "⚙️",
+  harmful:            "⛔",
+};
+
 function _overlayExplain(matches) {
   for (const m of matches) {
     const tag = m.split(":")[1] ?? m;
@@ -93,13 +151,21 @@ function _overlayExplain(matches) {
   return "Prompt injection attempt detected";
 }
 
+function _overlayIcon(matches) {
+  for (const m of matches) {
+    const tag = m.split(":")[1] ?? m;
+    if (_THREAT_ICONS[tag]) return _THREAT_ICONS[tag];
+  }
+  return "🛡";
+}
+
 function _riskLevel(score) {
   if (score >= 0.90) return { label: "CRITICAL", color: "#ff3b3b" };
   if (score >= 0.75) return { label: "HIGH",     color: "#f97316" };
   return                     { label: "MEDIUM",   color: "#eab308" };
 }
 
-function showBlockOverlay(score, matches, url = "", layer = "L1") {
+function showBlockOverlay(score, matches, url = "", layer = "L1", prompt = null) {
   document.getElementById("_pg_host")?.remove();
 
   const host = document.createElement("div");
@@ -112,11 +178,13 @@ function showBlockOverlay(score, matches, url = "", layer = "L1") {
 
   const shadow = host.attachShadow({ mode: "closed" });
 
-  const pct       = Math.round(score * 100);
-  const explain   = _overlayExplain(matches);
-  const risk      = _riskLevel(score);
-  const site      = url ? url.replace(/^https?:\/\//, "").split("/")[0].slice(0, 40) : location.hostname;
-  const layerLbl  = layer === "L2" ? "L1 + L2 DeBERTa" : "L1 Pattern Engine";
+  const pct        = Math.round(score * 100);
+  const explain    = _overlayExplain(matches);
+  const icon       = _overlayIcon(matches);
+  const risk       = _riskLevel(score);
+  const site       = url ? url.replace(/^https?:\/\//, "").split("/")[0].slice(0, 40) : location.hostname;
+  const layerLbl   = layer === "L2" ? "L1 + L2 DeBERTa" : "L1 Pattern Engine";
+  const promptSnip = prompt ? prompt.slice(0, 80) + (prompt.length > 80 ? "…" : "") : null;
 
   const topTags = matches
     .slice(0, 3)
@@ -248,10 +316,47 @@ function showBlockOverlay(score, matches, url = "", layer = "L1") {
         transition: all 0.15s;
       }
       .override:hover { border-color: #374151; color: #94a3b8; }
+
+      /* Prompt preview */
+      .prompt-preview {
+        margin: 0 14px 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid #1e2235;
+        border-radius: 7px;
+        padding: 7px 10px;
+        font-size: 10px;
+        font-family: "SF Mono", "Fira Mono", "Consolas", monospace;
+        color: #64748b;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .prompt-preview-lbl {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #334155;
+        margin-bottom: 3px;
+      }
+
+      /* Timer bar */
+      .timer-bar {
+        height: 3px;
+        background: ${risk.color}44;
+        border-radius: 0 0 12px 12px;
+        overflow: hidden;
+      }
+      .timer-fill {
+        height: 100%;
+        background: ${risk.color};
+        border-radius: 0 0 12px 12px;
+        animation: drain 10s linear forwards;
+      }
+      @keyframes drain { from { width: 100%; } to { width: 0%; } }
     </style>
     <div class="card">
       <div class="hdr">
-        <div class="hdr-icon">🛡</div>
+        <div class="hdr-icon">${icon}</div>
         <div class="hdr-body">
           <div class="hdr-title">Prompt Injection Blocked</div>
           <div class="hdr-site">on ${site}</div>
@@ -278,15 +383,34 @@ function showBlockOverlay(score, matches, url = "", layer = "L1") {
         <span class="layer-badge">${layerLbl}</span>
       </div>
 
+      ${promptSnip ? `
+      <div class="prompt-preview">
+        <div class="prompt-preview-lbl">Blocked prompt</div>
+        ${promptSnip}
+      </div>` : ""}
+
       <div class="btns">
         <button class="cancel">Cancel Request</button>
         <button class="override">⚠ Override</button>
       </div>
+
+      <div class="timer-bar"><div class="timer-fill"></div></div>
     </div>
   `;
 
-  const autoClose = setTimeout(() => host.remove(), 10000);
-  const close = () => { clearTimeout(autoClose); host.remove(); };
+  const autoClose = setTimeout(() => close(), 10000);
+  const close = () => {
+    clearTimeout(autoClose);
+    const card = shadow.querySelector(".card");
+    if (card) {
+      card.style.transition = "opacity 0.15s ease, transform 0.15s ease";
+      card.style.opacity = "0";
+      card.style.transform = "translateY(8px) scale(0.97)";
+      setTimeout(() => host.remove(), 160);
+    } else {
+      host.remove();
+    }
+  };
 
   shadow.querySelector(".x").addEventListener("click", close);
   shadow.querySelector(".cancel").addEventListener("click", close);
@@ -319,6 +443,7 @@ window.fetch = async function (input, init = {}) {
 
   if (!isLLMRequest(url)) return _fetch(input, init);
   if (!_pgEnabled) return _fetch(input, init);
+  if (_isWhitelisted(url)) return _fetch(input, init);
 
   // One-shot override: user clicked "Send anyway" in the block overlay
   try {
@@ -340,11 +465,12 @@ window.fetch = async function (input, init = {}) {
   if (body) {
     const extracted = extractMessages(url, body);
     if (extracted) {
-      const result = analyzeMessages(extracted.messages);
+      const result = _applyThresholds(analyzeMessages(extracted.messages));
 
       if (result.verdict === "BLOCK") {
-        postVerdict("BLOCK", result.score, result.matches, url);
-        showBlockOverlay(result.score, result.matches, url, "L1");
+        const prompt = extractPromptText(extracted.messages);
+        postVerdict("BLOCK", result.score, result.matches, url, prompt);
+        showBlockOverlay(result.score, result.matches, url, "L1", prompt);
         return Promise.reject(
           Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
             promptguard: true,
@@ -354,11 +480,13 @@ window.fetch = async function (input, init = {}) {
 
       if (result.verdict === "WARN") {
         const prompt = extractPromptText(extracted.messages);
-        const l2Verdict = await queryL2(prompt, result.score, result.matches, url);
+        const l2Verdict = _pgSettings.l2Enabled !== false
+          ? await queryL2(prompt, result.score, result.matches, url)
+          : "ALLOW";
 
         if (l2Verdict === "BLOCK") {
           postVerdict("BLOCK", result.score, result.matches, url, prompt);
-          showBlockOverlay(result.score, result.matches, url, "L2");
+          showBlockOverlay(result.score, result.matches, url, "L2", prompt);
           return Promise.reject(
             Object.assign(new DOMException("PromptGuard blocked this request.", "AbortError"), {
               promptguard: true,
@@ -456,7 +584,7 @@ XMLHttpRequest.prototype.open = function (method, url, ...rest) {
 XMLHttpRequest.prototype.send = function (body) {
   const url = this._pgUrl ?? "";
 
-  if (isLLMRequest(url) && _pgEnabled) {
+  if (isLLMRequest(url) && _pgEnabled && !_isWhitelisted(url)) {
     try {
       if (sessionStorage.getItem(_OVERRIDE_KEY)) {
         sessionStorage.removeItem(_OVERRIDE_KEY);
@@ -469,11 +597,12 @@ XMLHttpRequest.prototype.send = function (body) {
       if (rawBody) {
         const extracted = extractMessages(url, rawBody);
         if (extracted) {
-          const result = analyzeMessages(extracted.messages);
+          const result = _applyThresholds(analyzeMessages(extracted.messages));
 
           if (result.verdict === "BLOCK") {
-            postVerdict("BLOCK", result.score, result.matches, url);
-            showBlockOverlay(result.score, result.matches, url, "L1");
+            const prompt = extractPromptText(extracted.messages);
+            postVerdict("BLOCK", result.score, result.matches, url, prompt);
+            showBlockOverlay(result.score, result.matches, url, "L1", prompt);
             this.abort();
             return;
           }

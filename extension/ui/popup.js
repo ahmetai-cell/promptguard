@@ -2,6 +2,28 @@
 
 const PROXY_BASE = "https://promptguard-l2-production.up.railway.app";
 
+// ─── Category icons ───────────────────────────────────────────────────────────
+
+const CAT_ICON = {
+  "Instruction Override": "🔀",
+  "Jailbreak":            "🔓",
+  "Bypass Attempt":       "🚧",
+  "Dev Mode Trick":       "⚙️",
+  "Persona Hijack":       "👤",
+  "Data Exfiltration":    "📤",
+  "Credential Theft":     "🔑",
+  "Encoding Attack":      "🔢",
+  "Indirect Injection":   "🔗",
+  "Topic Switch":         "↩️",
+  "Social Engineering":   "🎭",
+  "Translate Trick":      "🌐",
+  "Output Manipulation":  "📝",
+  "Homoglyph Attack":     "👁",
+  "Zero-Width Attack":    "🔡",
+  "Unicode Attack":       "🌐",
+  "Harmful Request":      "⛔",
+};
+
 // ─── Category display names ───────────────────────────────────────────────────
 
 const CAT_LABEL = {
@@ -92,10 +114,12 @@ function renderCategories(rawCats) {
   }
 
   sorted.forEach(([label, count], i) => {
-    const pct = Math.max(4, Math.round((count / max) * 100));
-    const row = document.createElement("div");
+    const pct  = Math.max(4, Math.round((count / max) * 100));
+    const icon = CAT_ICON[label] ?? "";
+    const row  = document.createElement("div");
     row.className = "cat-row";
     row.innerHTML = `
+      ${icon ? `<span class="cat-icon">${icon}</span>` : ""}
       <span class="cat-name" title="${label}">${label}</span>
       <div class="bar-track">
         <div class="bar-fill" style="width:${pct}%;background:${BAR_COLORS[i % BAR_COLORS.length]}"></div>
@@ -112,7 +136,7 @@ function renderChart(days) {
   const svg = $("chart-svg");
   svg.innerHTML = "";
 
-  const W = 348, H = 60, PAD_BOTTOM = 16, BAR_W = 30, GAP = 8;
+  const W = 348, H = 72, PAD_BOTTOM = 16, BAR_W = 30, GAP = 8;
   const chartH = H - PAD_BOTTOM;
 
   // Build last 7 days array (oldest → newest)
@@ -284,7 +308,7 @@ function renderEvents(events) {
 
     el.innerHTML = `
       <div class="ev-row">
-        <span class="badge ${ev.verdict}">${ev.verdict}</span>
+        <span class="badge ${ev.verdict}">${ev.verdict} ${pct}%</span>
         <div class="ev-body">
           <div class="ev-url">${shortUrl}</div>
           <div class="ev-reason">${reason}</div>
@@ -329,13 +353,34 @@ function renderEvents(events) {
           <span class="ev-detail-lbl">Time</span>
           <span class="ev-detail-val">${fmtTs(ev.ts)}</span>
         </div>
+        ${ev.prompt ? `
+        <div class="ev-detail-row" style="margin-top:8px">
+          <span class="ev-detail-lbl"></span>
+          <div class="ev-detail-val">
+            <button class="copy-prompt-btn" data-prompt="${encodeURIComponent(ev.prompt)}">📋 Copy blocked prompt</button>
+          </div>
+        </div>` : ""}
       </div>
     `;
 
     // Toggle detail on click
-    el.addEventListener("click", () => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".copy-prompt-btn")) return;
       el.classList.toggle("open");
     });
+
+    // Copy prompt button
+    const copyBtn = el.querySelector(".copy-prompt-btn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const text = decodeURIComponent(copyBtn.dataset.prompt);
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.textContent = "✓ Copied!";
+          setTimeout(() => { copyBtn.textContent = "📋 Copy blocked prompt"; }, 1500);
+        });
+      });
+    }
 
     list.appendChild(el);
   });
@@ -367,6 +412,29 @@ document.querySelectorAll(".period-btn").forEach((btn) => {
     applyPeriod();
   });
 });
+
+// ─── Gear button (Settings) ───────────────────────────────────────────────────
+
+$("gear-btn").addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
+
+// ─── Delta stats ──────────────────────────────────────────────────────────────
+
+function renderDelta(id, todayVal, yesterdayVal) {
+  const el = $(id);
+  if (!el) return;
+  const delta = (todayVal ?? 0) - (yesterdayVal ?? 0);
+  if (delta > 0) {
+    el.textContent = `+${delta} today`;
+    el.className = "delta pos";
+  } else if (todayVal > 0) {
+    el.textContent = `${todayVal} today`;
+    el.className = "delta";
+  } else {
+    el.textContent = "";
+  }
+}
 
 // ─── Enabled toggle ───────────────────────────────────────────────────────────
 
@@ -429,6 +497,15 @@ async function render() {
     $("s-blocked").textContent = fmt(stats.totals?.blocked ?? 0);
     $("s-warned").textContent  = fmt(stats.totals?.warned  ?? 0);
     $("s-scanned").textContent = fmt(stats.totals?.scanned ?? 0);
+
+    // Delta stats: today vs yesterday
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const yday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today = stats.days?.[todayKey] ?? {};
+    const yesterday = stats.days?.[yday] ?? {};
+    renderDelta("d-blocked", today.blocked, yesterday.blocked);
+    renderDelta("d-warned",  today.warned,  yesterday.warned);
+    renderDelta("d-scanned", (today.blocked ?? 0) + (today.warned ?? 0), null);
 
     _statsCache = stats;
     applyPeriod();
